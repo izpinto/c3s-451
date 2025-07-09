@@ -1,0 +1,46 @@
+[build-system]
+requires = [
+    "setuptools>=61.0",
+    "wheel",
+    "cibuildwheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "c3s-lib"
+version = "0.0.1"  # CI will replace this during nightly build
+description = "C3S 451 Library for Python"
+readme = "README.md"
+requires-python = ">=3.7"
+license = "Apache-2.0"
+license-files = [
+    "LICENSE",
+]
+authors = [
+  { name = "Paul Weerheim", email = "paul@maris.nl" },
+  { name = "Tjerk Krijger", email = "tjerk@maris.nl" },
+  { name = "Robin Kooyman", email = "robin@maris.nl" }
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+
+dependencies = [
+  "requests>=2.0.0",
+  "pandas>=2.0.0",
+  "pyarrow >= 19.0.1",
+  "matplotlib >= 3.0.0",
+  "xarray >= 2025.1.0",
+  "netcdf >= 1.7.2",
+  "cdsapi >= 0.7.6",
+]
+
+[tool.setuptools]
+packages = ["c3s_lib"]  # OR use find if you prefer
+
+[tool.cibuildwheel]
+# Build all CPython versions (skip PyPy, Python 3.6)
+build = "cp3*-*"
+skip = "cp36-* pp*"
