@@ -7,7 +7,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "c3s-lib"
+name = "c3s_lib"
 version = "0.0.1"  # CI will replace this during nightly build
 description = "C3S 451 Library for Python"
 readme = "README.md"
