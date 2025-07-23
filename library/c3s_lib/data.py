@@ -9,7 +9,7 @@ class DataClient():
     def __init__(self, cds_key: str):
         self.cds_client = CDSClient(cds_key)
 
-    def _convert_temp(df: gpd.GeoDataFrame, from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
+    def _convert_temp(self, df: gpd.GeoDataFrame, from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
 
         if from_unit not in ["k", "c", "f"]:
             raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'k', 'c', or 'f'.")
@@ -37,7 +37,7 @@ class DataClient():
 
         return df
 
-    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
+    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches minimum temperature data for a given bounding box and time range.
 
@@ -53,7 +53,7 @@ class DataClient():
 
         return df
 
-    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
+    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches maximum temperature data for a given bounding box and time range.
 
@@ -69,7 +69,7 @@ class DataClient():
 
         return df
 
-    def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
+    def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches mean temperature data for a given bounding box and time range.
 

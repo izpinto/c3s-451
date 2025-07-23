@@ -1,6 +1,13 @@
 import matplotlib.pyplot as plt
 import plotly.express as px
 import geopandas as gpd
+import pandas as pd
+import contextily as ctx
+import math
+import cartopy 
+from shapely.geometry import shape, Polygon, mapping, MultiPolygon, GeometryCollection
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 
 def visualize_geo(
@@ -89,3 +96,130 @@ def visualize_geo(
 
     else:
         raise ValueError(f"Unknown backend '{backend}'. Choose 'matplotlib' or 'plotly'.")
+
+# 
+def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree()):
+    
+    fig, ax = plt.subplots(
+        ncols = 1, nrows = 1, figsize = fig_size, dpi = 100, 
+        subplot_kw = {"projection" : projection}
+        )   
+
+    # set color map
+    temp_kwargs = {"cmap" : cmap}
+
+    # Set the colorbar properties
+    legend_title = legend_title if legend_title else "legend"
+
+    # Plot the GeoDataFrame
+    gdf.plot(ax = ax, **temp_kwargs,
+        legend=legend, legend_kwds={'label': legend_title},
+        column = 't2m',
+        )
+
+    # Add contextily basemap
+    if gridlines:
+        ax.gridlines(
+            crs=projection, 
+            linewidth=0.5, color='black', 
+            draw_labels=["bottom", "left"], alpha=0.2
+        )
+
+    # Add coastlines
+    if coastlines:
+        ax.coastlines()
+
+    # Add contextily basemap
+    if borders:
+        ax.add_feature(
+            cartopy.feature.BORDERS, 
+            lw = 1, alpha = 0.7, ls = "--", zorder = 99
+        )
+
+    # Draw polygons if provided
+    if polygons != None:
+        for poly in polygons:
+            x, y = poly.exterior.xy
+            ax.plot(x, y, color='red', linewidth=2, transform=projection)
+
+    # add box around area of interest
+    if title != None:
+        ax.set_title(title)
+
+    return fig, ax
+
+
+def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree()):
+    # Ensure datetime column is datetime type
+    gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
+
+    # Unique days sorted
+    unique_days = sorted(gdfs[datetime_col].dt.date.unique())
+    n_plots = len(unique_days)
+    nrows = math.ceil(n_plots / ncols)
+
+    # Create subplots with Cartopy projection
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=figsize,
+        subplot_kw={'projection': projection}
+    )
+    axes = axes.flatten()
+
+    # Normalize color scale across all data
+    vmin = gdfs[column].min()
+    vmax = gdfs[column].max()
+
+    for i, day in enumerate(unique_days):
+        ax = axes[i]
+
+        # Filter GeoDataFrame for this day
+        day_gdf = gdfs[gdfs[datetime_col].dt.date == day]
+
+        # Plot data on this subplot
+        day_gdf.plot(
+            ax=ax,
+            column=column,
+            cmap=cmap,
+            legend=False,  # legend handled once globally
+            vmin=vmin,
+            vmax=vmax,
+        )
+
+        if gridlines:
+            ax.gridlines(
+                crs=projection,
+                linewidth=0.5,
+                color='black',
+                draw_labels=["bottom", "left"],
+                alpha=0.2
+            )
+
+        if coastlines:
+            ax.coastlines()
+
+        if borders:
+            ax.add_feature(cartopy.feature.BORDERS, lw=1, alpha=0.7, ls="--")
+
+        # Draw polygons if provided
+        if polygons is not None:
+            for poly in polygons:
+                x, y = poly.exterior.xy
+                ax.plot(x, y, color='red', linewidth=2, transform=projection)
+
+        ax.set_title(f"{day}", fontsize=10)
+
+    # Hide any unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(False)
+
+    # Add shared colorbar to the right
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm._A = []
+    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', fraction=0.02, pad=0.01)
+    cbar.set_label(legend_title)
+
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=16)
+
+    plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
+    return fig, axes
