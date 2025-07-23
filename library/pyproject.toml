@@ -19,7 +19,8 @@ license-files = [
 authors = [
   { name = "Paul Weerheim", email = "paul@maris.nl" },
   { name = "Tjerk Krijger", email = "tjerk@maris.nl" },
-  { name = "Robin Kooyman", email = "robin@maris.nl" }
+  { name = "Robin Kooyman", email = "robin@maris.nl" },
+  { name = "Jasper van den Barg", email = "jasper@maris.nl"}
 ]
 
 classifiers = [

@@ -9,7 +9,35 @@ class DataClient():
     def __init__(self, cds_key: str):
         self.cds_client = CDSClient(cds_key)
 
-    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+    def _convert_temp(df: gpd.GeoDataFrame, from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
+
+        if from_unit not in ["k", "c", "f"]:
+            raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'k', 'c', or 'f'.")
+            return df
+
+        if from_unit == "k" and to_unit == "k":
+            return df
+        if from_unit == "c" and to_unit == "c":
+            return df
+        if from_unit == "f" and to_unit == "f":
+            return df
+        
+        if from_unit == "k" and to_unit == "c":
+            df['t2m'] = df['t2m'] - 273.15
+        elif from_unit == "k" and to_unit == "f":
+            df['t2m'] = (df['t2m'] - 273.15) * 9/5 + 32
+        elif from_unit == "c" and to_unit == "k":
+            df['t2m'] = df['t2m'] + 273.15
+        elif from_unit == "c" and to_unit == "f":
+            df['t2m'] = (df['t2m'] * 9/5) + 32
+        elif from_unit == "f" and to_unit == "k":
+            df['t2m'] = (df['t2m'] - 32) * 5/9 + 273.15
+        elif from_unit == "f" and to_unit == "c":
+            df['t2m'] = (df['t2m'] - 32) * 5/9
+
+        return df
+
+    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
         """
         Fetches minimum temperature data for a given bounding box and time range.
 
@@ -21,9 +49,11 @@ class DataClient():
         - A pandas DataFrame containing the minimum temperature data.
         """
         # Implementation will go here
-        return self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_minimum")
+        df = self._convert_temp(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_minimum"), from_unit, to_unit)
 
-    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+        return df
+
+    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
         """
         Fetches maximum temperature data for a given bounding box and time range.
 
@@ -35,9 +65,11 @@ class DataClient():
         - A pandas DataFrame containing the maximum temperature data.
         """
         # Implementation will go here
-        return self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_maximum")
+        df = self._convert_temp(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_maximum"), from_unit, to_unit)
 
-    def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+        return df
+
+    def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
         """
         Fetches mean temperature data for a given bounding box and time range.
 
@@ -49,9 +81,9 @@ class DataClient():
         - A pandas DataFrame containing the mean temperature data.
         """
         # Implementation will go here
-        return self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean")
-        
-    
+        df = self._convert_temp(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"), from_unit, to_unit)
+
+        return df
     
     def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
         """
@@ -65,7 +97,6 @@ class DataClient():
         """
         # Implementation will go here
         return self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum")
-    
     
     
 class CDSClient():
