@@ -8,6 +8,7 @@ import cartopy
 from shapely.geometry import shape, Polygon, mapping, MultiPolygon, GeometryCollection
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 
 def visualize_geo(
@@ -224,3 +225,55 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
 
     #plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
     return fig, axes
+
+def plot_poly(polygons:Polygon, coords, elevation=None):
+  lons, lats = zip(*coords)
+  min_lon = min(lons)
+  max_lon = max(lons)
+  min_lat = min(lats)
+  max_lat = max(lats)
+
+  if elevation is not None:
+    elevation_subset = elevation.sel(
+        lon=slice(min_lon-3, max_lon+3),
+        lat=slice(min_lat-3, max_lat+3)  
+    )
+
+  fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': ccrs.PlateCarree()})
+
+  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=ccrs.PlateCarree())
+  ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
+  ax.add_feature(cfeature.COASTLINE)
+  ax.add_feature(cfeature.LAND, edgecolor='black')
+  ax.gridlines(draw_labels=True)
+
+  # Set colorbar to 1:4 to keep water blue and land green
+  cax = inset_axes(
+      ax,
+      width="3%", height="100%",
+      loc='center left',
+      bbox_to_anchor=(1.1, 0., 1, 1),
+      bbox_transform=ax.transAxes,
+      borderpad=0
+  )
+
+  if elevation is not None:
+    elevation_plot = elevation_subset.plot(
+        ax=ax,
+        transform=ccrs.PlateCarree(),
+        cmap="terrain",
+        vmin=-250, vmax= 1000,
+        cbar_ax=cax,
+        cbar_kwargs={"label": "Elevation (m)"},
+        add_colorbar=True,
+        add_labels=False
+    )
+
+  ax.set_title("Selected regions")
+
+  for polygon in polygons:
+      x, y = polygon.exterior.xy
+      ax.plot(x, y, color='red', linewidth=2, transform=ccrs.PlateCarree())
+      ax.fill(x, y, color='red', alpha=0.3, transform=ccrs.PlateCarree())
+  
+  return fig, ax
