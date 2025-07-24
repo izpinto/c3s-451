@@ -9,6 +9,9 @@ from shapely.geometry import shape, Polygon, mapping, MultiPolygon, GeometryColl
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import rasterio
+import numpy as np
+from shapely import contains_xy
 
 
 def visualize_geo(
@@ -98,7 +101,8 @@ def visualize_geo(
     else:
         raise ValueError(f"Unknown backend '{backend}'. Choose 'matplotlib' or 'plotly'.")
 
-# 
+
+
 def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree()):
     
     fig, ax = plt.subplots(
@@ -148,6 +152,7 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
         ax.set_title(title)
 
     return fig, ax
+
 
 
 def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree()):
@@ -226,6 +231,8 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
     #plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
     return fig, axes
 
+
+
 def plot_poly(polygons:Polygon, coords, elevation=None):
   lons, lats = zip(*coords)
   min_lon = min(lons)
@@ -277,3 +284,119 @@ def plot_poly(polygons:Polygon, coords, elevation=None):
       ax.fill(x, y, color='red', alpha=0.3, transform=ccrs.PlateCarree())
   
   return fig, ax
+
+
+
+def plot_geometry(geom, ax, color='green', alpha=0.3):
+    if isinstance(geom, Polygon):
+        x, y = geom.exterior.xy
+        ax.plot(x, y, color=color, linewidth=2, transform=ccrs.PlateCarree())
+        ax.fill(x, y, color=color, alpha=alpha, transform=ccrs.PlateCarree())
+    elif isinstance(geom, MultiPolygon):
+        for poly in geom.geoms:
+            plot_geometry(poly, ax, color=color, alpha=alpha)
+    elif isinstance(geom, GeometryCollection):
+        for subgeom in geom.geoms:
+            if isinstance(subgeom, (Polygon, MultiPolygon, GeometryCollection)):
+                plot_geometry(subgeom, ax, color=color, alpha=alpha)
+            else:
+                # Optionally handle or ignore other geometry types
+                pass
+
+
+
+def elevation_region(data, polygons, elevation, threshold:int):
+  
+  all_coords = []
+  adjusted_polygons = []
+
+  for feature in data["features"]:
+      coords = feature['geometry']['coordinates'][0]
+      all_coords.extend(coords)
+      poly = Polygon(coords)
+
+      minx, miny, maxx, maxy = poly.bounds
+      elev_subset = elevation.sel(
+          lon=slice(minx-0.5, maxx+0.5),
+          lat=slice(miny-0.5, maxy+0.5)  
+      )
+
+      elev_vals = elev_subset.squeeze().values  
+
+      if elev_subset.lat.values[0] < elev_subset.lat.values[-1]:
+          elev_vals = elev_vals[::-1, :]  
+          lat = elev_subset.lat.values[::-1]
+      else:
+          lat = elev_subset.lat.values
+
+      lon = elev_subset.lon.values
+
+      lon2d, lat2d = np.meshgrid(lon, lat)
+
+      below_thresh = elev_vals <= threshold
+
+      inside_poly = contains_xy(poly, lon2d, lat2d)
+
+      final_mask = below_thresh & inside_poly
+
+      transform = rasterio.transform.from_bounds(
+          lon.min(), lat.min(),   
+          lon.max(), lat.max(),   
+          len(lon), len(lat)
+      )
+
+      from shapely.geometry import shape
+
+      for geom, val in rasterio.features.shapes(
+              final_mask.astype(np.uint8),
+              mask=final_mask,
+              transform=transform):
+          if val == 1:
+              new_poly = shape(geom)
+              clipped_poly = new_poly.intersection(poly)
+              if not clipped_poly.is_empty:
+                  adjusted_polygons.append(clipped_poly)
+
+  lons, lats = zip(*all_coords)
+  min_lon = min(lons)
+  max_lon = max(lons)
+  min_lat = min(lats)
+  max_lat = max(lats)
+
+  fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+  ax.set_title(f"Selected regions under {threshold} m elevation")
+  ax.add_feature(cfeature.BORDERS, linestyle=':')
+  ax.add_feature(cfeature.COASTLINE)
+  ax.add_feature(cfeature.LAND, edgecolor='black')
+  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=ccrs.PlateCarree())
+  ax.gridlines(draw_labels=True)
+
+  cax = inset_axes(
+      ax,
+      width="3%", height="100%",
+      loc='center left',
+      bbox_to_anchor=(1.1, 0., 1, 1),
+      bbox_transform=ax.transAxes,
+      borderpad=0
+  )
+
+  elev_plot = elevation.plot(
+      ax=ax,
+      transform=ccrs.PlateCarree(),
+      cmap="terrain",
+      cbar_ax=cax,
+      cbar_kwargs={"label": "Elevation (m)"},
+      add_colorbar=True,
+      add_labels=False,
+      vmin=0, 
+      vmax=threshold  
+  )
+
+  for poly in polygons:
+      x, y = poly.exterior.xy
+      ax.plot(x, y, color='red', linewidth=2, transform=ccrs.PlateCarree())
+
+  for geom in adjusted_polygons:
+      plot_geometry(geom, ax)
+
+  return fig, ax, adjusted_polygons
