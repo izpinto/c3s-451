@@ -215,11 +215,12 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
     # Add shared colorbar to the right
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
     sm._A = []
-    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', fraction=0.02, pad=0.01)
-    cbar.set_label(legend_title)
+    #cbar_ax = fig.add_axes([.2, .95, .6, .02])
+    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=40)
+    cbar.set_label(legend_title, labelpad=10, fontsize=12)
 
     if suptitle:
         fig.suptitle(suptitle, fontsize=16)
 
-    plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
+    #plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
     return fig, axes
