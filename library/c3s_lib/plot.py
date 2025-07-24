@@ -233,7 +233,7 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
 
 
 
-def plot_poly(polygons:Polygon, coords, elevation=None):
+def plot_poly(polygons:Polygon, coords, elevation=None, projection=ccrs.PlateCarree()):
   lons, lats = zip(*coords)
   min_lon = min(lons)
   max_lon = max(lons)
@@ -246,9 +246,9 @@ def plot_poly(polygons:Polygon, coords, elevation=None):
         lat=slice(min_lat-3, max_lat+3)  
     )
 
-  fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': ccrs.PlateCarree()})
+  fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': projection})
 
-  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=ccrs.PlateCarree())
+  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
   ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
   ax.add_feature(cfeature.COASTLINE)
   ax.add_feature(cfeature.LAND, edgecolor='black')
@@ -267,7 +267,7 @@ def plot_poly(polygons:Polygon, coords, elevation=None):
   if elevation is not None:
     elevation_plot = elevation_subset.plot(
         ax=ax,
-        transform=ccrs.PlateCarree(),
+        transform=projection,
         cmap="terrain",
         vmin=-250, vmax= 1000,
         cbar_ax=cax,
@@ -280,18 +280,18 @@ def plot_poly(polygons:Polygon, coords, elevation=None):
 
   for polygon in polygons:
       x, y = polygon.exterior.xy
-      ax.plot(x, y, color='red', linewidth=2, transform=ccrs.PlateCarree())
-      ax.fill(x, y, color='red', alpha=0.3, transform=ccrs.PlateCarree())
+      ax.plot(x, y, color='red', linewidth=2, transform=projection)
+      ax.fill(x, y, color='red', alpha=0.3, transform=projection)
   
   return fig, ax
 
 
 
-def plot_geometry(geom, ax, color='green', alpha=0.3):
+def plot_geometry(geom, ax, color='green', alpha=0.3, projection=ccrs.PlateCarree()):
     if isinstance(geom, Polygon):
         x, y = geom.exterior.xy
-        ax.plot(x, y, color=color, linewidth=2, transform=ccrs.PlateCarree())
-        ax.fill(x, y, color=color, alpha=alpha, transform=ccrs.PlateCarree())
+        ax.plot(x, y, color=color, linewidth=2, transform=projection)
+        ax.fill(x, y, color=color, alpha=alpha, transform=projection)
     elif isinstance(geom, MultiPolygon):
         for poly in geom.geoms:
             plot_geometry(poly, ax, color=color, alpha=alpha)
@@ -305,7 +305,7 @@ def plot_geometry(geom, ax, color='green', alpha=0.3):
 
 
 
-def elevation_region(data, polygons, elevation, threshold:int):
+def elevation_region(data, polygons, elevation, threshold:int, projection=ccrs.PlateCarree()):
   
   all_coords = []
   adjusted_polygons = []
@@ -363,12 +363,12 @@ def elevation_region(data, polygons, elevation, threshold:int):
   min_lat = min(lats)
   max_lat = max(lats)
 
-  fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+  fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': projection})
   ax.set_title(f"Selected regions under {threshold} m elevation")
   ax.add_feature(cfeature.BORDERS, linestyle=':')
   ax.add_feature(cfeature.COASTLINE)
   ax.add_feature(cfeature.LAND, edgecolor='black')
-  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=ccrs.PlateCarree())
+  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
   ax.gridlines(draw_labels=True)
 
   cax = inset_axes(
@@ -382,7 +382,7 @@ def elevation_region(data, polygons, elevation, threshold:int):
 
   elev_plot = elevation.plot(
       ax=ax,
-      transform=ccrs.PlateCarree(),
+      transform=projection,
       cmap="terrain",
       cbar_ax=cax,
       cbar_kwargs={"label": "Elevation (m)"},
@@ -394,7 +394,7 @@ def elevation_region(data, polygons, elevation, threshold:int):
 
   for poly in polygons:
       x, y = poly.exterior.xy
-      ax.plot(x, y, color='red', linewidth=2, transform=ccrs.PlateCarree())
+      ax.plot(x, y, color='red', linewidth=2, transform=projection)
 
   for geom in adjusted_polygons:
       plot_geometry(geom, ax)
