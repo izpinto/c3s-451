@@ -103,7 +103,7 @@ def visualize_geo(
 
 
 
-def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree()):
+def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
     
     fig, ax = plt.subplots(
         ncols = 1, nrows = 1, figsize = fig_size, dpi = 100, 
@@ -142,14 +142,18 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
         )
 
     # Draw polygons if provided
-    if polygons != None:
+    if polygons is not None:
         for poly in polygons:
             x, y = poly.exterior.xy
             ax.plot(x, y, color='red', linewidth=2, transform=projection)
 
     # add box around area of interest
-    if title != None:
+    if title is not None:
         ax.set_title(title)
+
+    # Set extent if provided
+    if extends is not None:
+      ax.set_extent(extends, crs=projection)
 
     return fig, ax
 
