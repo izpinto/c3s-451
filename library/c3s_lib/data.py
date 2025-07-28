@@ -36,6 +36,23 @@ class DataClient():
             df['t2m'] = (df['t2m'] - 32) * 5/9
 
         return df
+    
+    def _convert_precipitation(self, df: gpd.GeoDataFrame, from_unit="l_m2", to_unit="mm") -> gpd.GeoDataFrame:
+        if from_unit not in ["l_m2", "mm"]:
+            raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'l_m2' or 'mm'.")
+            return df
+
+        if from_unit == "l_m2" and to_unit == "l_m2":
+            return df
+        if from_unit == "mm" and to_unit == "mm":
+            return df
+        
+        if from_unit == "l_m2" and to_unit == "mm":
+            df['tp'] = df['tp'] * 1000
+        elif from_unit == "mm" and to_unit == "l_m2":
+            df['tp'] = df['tp'] / 1000
+        
+        return df
 
     def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
@@ -85,7 +102,7 @@ class DataClient():
 
         return df
     
-    def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+    def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "l_m2", to_unit:str = "mm") -> gpd.GeoDataFrame:
         """
         Fetches precipitation data for a given bounding box and time range.
         # Parameters:
@@ -94,9 +111,10 @@ class DataClient():
 
         # Returns:
         - A pandas DataFrame containing the precipitation data.
+        - precipitation is in L/m^2/day
         """
         # Implementation will go here
-        return self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum")
+        return self._convert_precipitation(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), from_unit, to_unit)
     
     
 class CDSClient():

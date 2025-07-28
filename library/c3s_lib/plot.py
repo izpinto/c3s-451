@@ -12,6 +12,9 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import rasterio
 import numpy as np
 from shapely import contains_xy
+import matplotlib.dates as mdates
+from matplotlib.patches import Rectangle
+
 
 
 def visualize_geo(
@@ -159,7 +162,7 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
 
 
 
-def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree()):
+def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
     # Ensure datetime column is datetime type
     gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
 
@@ -231,6 +234,10 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
 
     if suptitle:
         fig.suptitle(suptitle, fontsize=16)
+    
+    # Set extent if provided
+    if extends is not None:
+      ax.set_extent(extends, crs=projection)
 
     #plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
     return fig, axes
@@ -404,3 +411,119 @@ def elevation_region(data, polygons, elevation, threshold:int, projection=ccrs.P
       plot_geometry(geom, ax)
 
   return fig, ax, adjusted_polygons
+
+
+# plot a timeseries of a GeoDataFrame [date, value]
+def plot_timeseries(data, title, x_label, y_label, label_rotation=0, dateformat="%Y-%m-%d", x_ticks=mdates.DayLocator(), color='darkblue', linewidth=2.0, linestyle='-'):
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    # Plot directly onto the axes
+    data.plot(ax=ax,
+              color=color,     # line color
+              linewidth=linewidth,        # line width
+              linestyle=linestyle        # dashed line; use "-" for solid, ":" for dotted
+              )
+
+    
+
+    # Set major ticks to the 1st of each month
+    ax.xaxis.set_major_locator(x_ticks)
+
+    # Format the ticks as full dates
+    ax.xaxis.set_major_formatter(mdates.DateFormatter(dateformat))
+
+    # Rotate tick labels
+    for label in ax.get_xticklabels():
+        label.set_rotation(label_rotation)
+        label.set_horizontalalignment("right")
+
+    # Set title and axis labels
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+
+    # Add grid
+    ax.grid(True)
+
+    # Make sure everything fits
+    fig.tight_layout()
+
+    return fig, ax
+
+
+
+def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, labels, time_column="valid_time", days=None, ylimit=None):
+
+    fig, axs = plt.subplots(ncols=4, figsize=(20, 3), dpi=100, sharey=True)
+
+    # Ensure datetime and sorted
+    data = data.copy()
+    data[time_column] = pd.to_datetime(data[time_column])
+    data = data.sort_values(time_column)
+
+    for i in range(4):
+        ax = axs[i]
+
+        # Determine n-day window
+        if days is not None:
+            ndays = days[i]
+        elif column == 't2m':
+            ndays = [1, 3, 7, 14][i]
+        elif column == 'tp':
+            ndays = [1, 3, 5, 10][i]
+        else:
+            ndays = [1, 3, 5, 11][i]
+
+        if column is "tp":
+            data_nday = (
+                data.set_index(time_column)
+                    [column]
+                    .rolling(ndays, min_periods=1, center=False)
+                    .sum()
+                    .reset_index()
+            )
+        else:
+            data_nday = (
+                data.set_index(time_column)
+                    [column]
+                    .rolling(ndays, min_periods=1, center=False)
+                    .mean()
+                    .reset_index()
+            )
+
+
+        # Plot each year in blue
+        for y in data_nday[time_column].dt.year.unique():
+            data_y = data_nday[data_nday[time_column].dt.year == y]
+            ax.plot(
+                data_y[time_column].dt.dayofyear,
+                data_y[column],
+                color="tab:blue",
+                alpha=0.3
+            )
+
+        # Style the plot
+        ax.set_xticks(labelticks)
+        ax.set_xticklabels(labels)
+        ax.grid(axis="x", color="k", alpha=0.2)
+        ax.set_title(f"{ndays}-day accumulated {parameter}")
+
+        # Highlight date window
+        ylim = ax.get_ylim()
+        print(ylim)
+
+        dayofyear = pd.to_datetime(event_date).dayofyear
+        ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000,
+                               color="gold", alpha=0.3))
+        ax.set_ylim(ylim)
+
+        # Highlight selected year
+        year2 = pd.to_datetime(event_date)
+        data_y = data_nday[data_nday[time_column] <= year2]
+        ax.plot(data_y[time_column].dt.dayofyear, data_y[column], color="k")
+
+    if ylimit is not None:
+        ax.set_ylim(0, ylimit)
+
+    return fig, axs
