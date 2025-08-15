@@ -162,7 +162,7 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
 
 
 
-def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
+def subplot_gdf(gdfs, datetime_col='valid_time', value_col='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
     # Ensure datetime column is datetime type
     gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
 
@@ -179,8 +179,8 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
     axes = axes.flatten()
 
     # Normalize color scale across all data
-    vmin = gdfs[column].min()
-    vmax = gdfs[column].max()
+    vmin = gdfs[value_col].min()
+    vmax = gdfs[value_col].max()
 
     for i, day in enumerate(unique_days):
         ax = axes[i]
@@ -191,7 +191,7 @@ def subplot_gdf(gdfs, datetime_col='valid_time', column='t2m', polygons=None, nc
         # Plot data on this subplot
         day_gdf.plot(
             ax=ax,
-            column=column,
+            column=value_col,
             cmap=cmap,
             legend=False,  # legend handled once globally
             vmin=vmin,
@@ -453,14 +453,14 @@ def plot_timeseries(data, title, x_label, y_label, label_rotation=0, dateformat=
 
 
 
-def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, labels, time_column="valid_time", days=None, ylimit=None):
+def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, labels, datetime_col="valid_time", days=None, ylimit=None):
 
     fig, axs = plt.subplots(ncols=4, figsize=(20, 3), dpi=100, sharey=True)
 
     # Ensure datetime and sorted
     data = data.copy()
-    data[time_column] = pd.to_datetime(data[time_column])
-    data = data.sort_values(time_column)
+    data[datetime_col] = pd.to_datetime(data[datetime_col])
+    data = data.sort_values(datetime_col)
 
     for i in range(4):
         ax = axs[i]
@@ -477,7 +477,7 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
 
         if column is "tp":
             data_nday = (
-                data.set_index(time_column)
+                data.set_index(datetime_col)
                     [column]
                     .rolling(ndays, min_periods=1, center=False)
                     .sum()
@@ -485,7 +485,7 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
             )
         else:
             data_nday = (
-                data.set_index(time_column)
+                data.set_index(datetime_col)
                     [column]
                     .rolling(ndays, min_periods=1, center=False)
                     .mean()
@@ -494,10 +494,10 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
 
 
         # Plot each year in blue
-        for y in data_nday[time_column].dt.year.unique():
-            data_y = data_nday[data_nday[time_column].dt.year == y]
+        for y in data_nday[datetime_col].dt.year.unique():
+            data_y = data_nday[data_nday[datetime_col].dt.year == y]
             ax.plot(
-                data_y[time_column].dt.dayofyear,
+                data_y[datetime_col].dt.dayofyear,
                 data_y[column],
                 color="tab:blue",
                 alpha=0.3
@@ -520,8 +520,8 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
 
         # Highlight selected year
         year2 = pd.to_datetime(event_date)
-        data_y = data_nday[data_nday[time_column] <= year2]
-        ax.plot(data_y[time_column].dt.dayofyear, data_y[column], color="k")
+        data_y = data_nday[data_nday[datetime_col] <= year2]
+        ax.plot(data_y[datetime_col].dt.dayofyear, data_y[column], color="k")
 
     if ylimit is not None:
         ax.set_ylim(0, ylimit)
