@@ -106,14 +106,17 @@ def visualize_geo(
 
 
 
-def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
+def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, value_col='t2m', cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
     
     fig, ax = plt.subplots(
         ncols = 1, nrows = 1, figsize = fig_size, dpi = 100, 
         subplot_kw = {"projection" : projection}
         )   
 
-    # set color map
+    # set color map   
+    # vmin = -50
+    # vmax = 50   # this should be variable based on temp or preticipation
+    # temp_kwargs = {"cmap" : cmap, "vmin":vmin, "vmax":vmax}
     temp_kwargs = {"cmap" : cmap}
 
     # Set the colorbar properties
@@ -122,7 +125,7 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
     # Plot the GeoDataFrame
     gdf.plot(ax = ax, **temp_kwargs,
         legend=legend, legend_kwds={'label': legend_title},
-        column = 't2m',
+        column = value_col,
         )
 
     # Add contextily basemap
@@ -475,7 +478,7 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
         else:
             ndays = [1, 3, 5, 11][i]
 
-        if column is "tp":
+        if column == "tp":
             data_nday = (
                 data.set_index(datetime_col)
                     [column]
