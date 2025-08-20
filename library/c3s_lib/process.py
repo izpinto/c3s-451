@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import geopandas as gpd
 
+# Rewrite so only the mean is calculated and not yet the anomoly
 def calculate_anomaly(final_gdf, gdfs, value_col="t2m", datetime_col='valid_time'):
     # Ensure datetime columns
     final_gdf = final_gdf.copy()

@@ -2,10 +2,12 @@ import requests
 import numpy as np
 from shapely.geometry import Polygon
 import webbrowser
+from urllib.parse import urlencode
+from typing import Dict, Any
 
 
-# Sekect a region using the C3S-451 Region Picker service
-def select_region(regionType):
+# Select a region using the C3S-451 Region Picker service
+def select_region(regionType, params:Dict[str, Any]=None):
     
     allowed_region_types = ['wraf', 'hydrobasin']
     
@@ -13,8 +15,12 @@ def select_region(regionType):
         raise ValueError(f"Invalid regionType '{regionType}'. Allowed values are: {allowed_region_types}")
     
     url = f"http://c3s-451/region-picker/start-m2m/{regionType}"
+
+    #if params != None:
+    #    url += urlencode(params)
     
-    response = requests.get(url)
+    # response = requests.get(url=url, params=params)
+    response = requests.post(url=url, data=params)
     
     poll_url = False
     

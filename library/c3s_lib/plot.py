@@ -455,7 +455,7 @@ def plot_timeseries(data, title, x_label, y_label, label_rotation=0, dateformat=
     return fig, ax
 
 
-
+# add standard deviation
 def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, labels, datetime_col="valid_time", days=None, ylimit=None):
 
     fig, axs = plt.subplots(ncols=4, figsize=(20, 3), dpi=100, sharey=True)
