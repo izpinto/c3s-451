@@ -456,7 +456,7 @@ def plot_timeseries(data, title, x_label, y_label, label_rotation=0, dateformat=
 
 
 # add standard deviation
-def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, labels, datetime_col="valid_time", days=None, ylimit=None):
+def n_day_accumulations_gdf(data, value_col, parameter, event_date, labelticks, labels, centering=False, datetime_col="valid_time", days=None, ylimit=None):
 
     fig, axs = plt.subplots(ncols=4, figsize=(20, 3), dpi=100, sharey=True)
 
@@ -471,26 +471,26 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
         # Determine n-day window
         if days is not None:
             ndays = days[i]
-        elif column == 't2m':
+        elif value_col == 't2m':
             ndays = [1, 3, 7, 14][i]
-        elif column == 'tp':
+        elif value_col == 'tp':
             ndays = [1, 3, 5, 10][i]
         else:
             ndays = [1, 3, 5, 11][i]
 
-        if column == "tp":
+        if value_col == "tp":
             data_nday = (
                 data.set_index(datetime_col)
-                    [column]
-                    .rolling(ndays, min_periods=1, center=False)
+                    [value_col]
+                    .rolling(ndays, min_periods=1, center=centering)
                     .sum()
                     .reset_index()
             )
         else:
             data_nday = (
                 data.set_index(datetime_col)
-                    [column]
-                    .rolling(ndays, min_periods=1, center=False)
+                    [value_col]
+                    .rolling(ndays, min_periods=1, center=centering)
                     .mean()
                     .reset_index()
             )
@@ -501,7 +501,7 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
             data_y = data_nday[data_nday[datetime_col].dt.year == y]
             ax.plot(
                 data_y[datetime_col].dt.dayofyear,
-                data_y[column],
+                data_y[value_col],
                 color="tab:blue",
                 alpha=0.3
             )
@@ -524,9 +524,139 @@ def n_day_accumulations_gdf(data, column, parameter, event_date, labelticks, lab
         # Highlight selected year
         year2 = pd.to_datetime(event_date)
         data_y = data_nday[data_nday[datetime_col] <= year2]
-        ax.plot(data_y[datetime_col].dt.dayofyear, data_y[column], color="k")
+        ax.plot(data_y[datetime_col].dt.dayofyear, data_y[value_col], color="k")
 
     if ylimit is not None:
         ax.set_ylim(0, ylimit)
+
+    return fig, axs
+
+
+
+
+# def plot_n_day_accumulations(rolled_data_list, value_col, parameter, event_date, labelticks, labels, days, ylimit=None, datetime_col="valid_time"):
+#     """
+#     Plot n-day rolling accumulations for different windows.
+    
+#     Parameters
+#     ----------
+#     rolled_data_list : list of DataFrames
+#         List of results from n_day_accumulations_gdf(), one per window.
+#     value_col : str
+#         Column that was rolled.
+#     parameter : str
+#         Parameter name for titles.
+#     event_date : str or datetime
+#         Highlight date.
+#     labelticks : list
+#         X-axis tick positions.
+#     labels : list
+#         X-axis tick labels.
+#     days : list
+#         List of window sizes.
+#     ylimit : int or None
+#         Upper limit for y-axis.
+#     datetime_col : str
+#         Column with datetimes.
+#     """
+#     fig, axs = plt.subplots(ncols=len(rolled_data_list), figsize=(5 * len(rolled_data_list), 3), dpi=100, sharey=True)
+
+#     if len(rolled_data_list) == 1:
+#         axs = [axs]  # make iterable if only one axis
+
+#     for ax, data_nday, ndays in zip(axs, rolled_data_list, days):
+#         # Plot each year in blue
+#         for y in data_nday[datetime_col].dt.year.unique():
+#             data_y = data_nday[data_nday[datetime_col].dt.year == y]
+#             ax.plot(
+#                 data_y[datetime_col].dt.dayofyear,
+#                 data_y[value_col],
+#                 color="tab:blue",
+#                 alpha=0.3
+#             )
+
+#         # Style the plot
+#         ax.set_xticks(labelticks)
+#         ax.set_xticklabels(labels)
+#         ax.grid(axis="x", color="k", alpha=0.2)
+#         ax.set_title(f"{ndays}-day accumulated {parameter}")
+
+#         # Highlight date window
+#         ylim = ax.get_ylim()
+#         dayofyear = pd.to_datetime(event_date).dayofyear
+#         ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000, color="gold", alpha=0.3))
+#         ax.set_ylim(ylim)
+
+#         # Highlight selected year (all up to event_date)
+#         year2 = pd.to_datetime(event_date)
+#         data_y = data_nday[data_nday[datetime_col] <= year2]
+#         ax.plot(data_y[datetime_col].dt.dayofyear, data_y[value_col], color="k")
+
+#         if ylimit is not None:
+#             ax.set_ylim(0, ylimit)
+
+#     return fig, axs
+
+
+
+
+def plot_n_day_accumulations(
+    rolled_data_list, value_col, parameter, event_date,
+    labelticks, labels, days, ylimit=None, datetime_col="valid_time"
+):
+    """
+    Plot n-day rolling accumulations for different windows.
+    """
+    fig, axs = plt.subplots(
+        ncols=len(rolled_data_list),
+        figsize=(5 * len(rolled_data_list), 3),
+        dpi=100,
+        sharey=True
+    )
+
+    if len(rolled_data_list) == 1:
+        axs = [axs]  # make iterable if only one axis
+
+    event_date = pd.to_datetime(event_date)
+    event_year = event_date.year
+
+    for ax, data_nday, ndays in zip(axs, rolled_data_list, days):
+        # Plot all years EXCEPT event year in blue
+        for y in data_nday[datetime_col].dt.year.unique():
+            if y == event_year:
+                continue
+            data_y = data_nday[data_nday[datetime_col].dt.year == y]
+            ax.plot(
+                data_y[datetime_col].dt.dayofyear,
+                data_y[value_col],
+                color="tab:blue",
+                alpha=0.3
+            )
+
+        # Plot event year only up to event_date in black
+        data_event = data_nday[
+            (data_nday[datetime_col].dt.year == event_year) &
+            (data_nday[datetime_col] <= event_date)
+        ]
+        ax.plot(
+            data_event[datetime_col].dt.dayofyear,
+            data_event[value_col],
+            color="k"
+        )
+
+        # Style
+        ax.set_xticks(labelticks)
+        ax.set_xticklabels(labels)
+        ax.grid(axis="x", color="k", alpha=0.2)
+        ax.set_title(f"{ndays}-day accumulated {parameter}")
+
+        # Highlight date window
+        ylim = ax.get_ylim()
+        dayofyear = event_date.dayofyear
+        ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000, color="gold", alpha=0.3))
+        ax.set_ylim(ylim)
+
+        if ylimit is not None:
+            ax.set_ylim(0, ylimit)
 
     return fig, axs
