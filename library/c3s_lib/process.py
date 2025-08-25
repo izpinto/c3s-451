@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import geopandas as gpd
+from typing import Union, Literal
 
 
-# this does not account for using 1990-12-16 and 2021-1-15 as edge cases for when the event is located at the start or end of the year
+# this does not account for dates that are outside of the range of the data such as januari 1-14 and december 18-31
 def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes.DatetimeArray,
                        value_col:str, padding:int=15, year_range:tuple[int, int]=None,
                        datetime_col:str="valid_time"
@@ -124,45 +125,54 @@ def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDa
 
 
 
-def n_day_accumulations_gdf(gdf:gpd.GeoDataFrame, value_col:str, padding:int, centering:bool=False, datetime_col:str="valid_time"):
+
+def n_day_accumulations_gdf(
+    gdf:Union[pd.DataFrame, gpd.GeoDataFrame], value_col:str, padding:int,
+    centering:bool=False, datetime_col:str="valid_time",
+    method:Literal["sum", "mean", "std", "quantile"]="mean", quantile:float=0.9
+):
     """
-    Compute rolling n-day accumulation (sum for 'tp', mean otherwise).
+    Compute rolling n-day statistics (sum, mean, std, quantile).
     
     Parameters
     ----------
-    data : GeoDataFrame or DataFrame
+    gdf : GeoDataFrame or DataFrame
         Input data.
     value_col : str
         Column to roll (e.g. 't2m', 'tp').
-    days : int
+    padding : int
         Window size in days.
     centering : bool
         Center the window.
     datetime_col : str
         Column with datetimes.
+    method : {"sum", "mean", "std", "quantile"}
+        Rolling aggregation method.
+    q : float, optional
+        Quantile to compute if method="quantile". Default is 0.5 (median).
 
     Returns
     -------
     DataFrame
         Rolled values with same columns.
     """
+
     gdf = gdf.copy()
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-    #data = data.sort_values(datetime_col)
+    
+    roller = gdf.set_index(datetime_col)[value_col].rolling(
+        padding, min_periods=1, center=centering
+    )
 
-    if value_col == "tp":
-        data_nday = (
-            gdf.set_index(datetime_col)[value_col]
-            .rolling(padding, min_periods=1, center=centering)
-            .sum()
-            .reset_index()
-        )
+    if method == "sum":
+        result = roller.sum()
+    elif method == "mean":
+        result = roller.mean()
+    elif method == "std":
+        result = roller.std()
+    elif method == "quantile":
+        result = roller.quantile(quantile)
     else:
-        data_nday = (
-            gdf.set_index(datetime_col)[value_col]
-            .rolling(padding, min_periods=1, center=centering)
-            .mean()
-            .reset_index()
-        )
+        raise ValueError(f"Unsupported method: {method}")
 
-    return data_nday
+    return result.reset_index()

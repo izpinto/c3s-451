@@ -219,7 +219,48 @@ def depreciated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoD
 
 
 
+def depreciated_n_day_accumulations_gdf(gdf, value_col:str, padding:int, centering:bool=False, datetime_col:str="valid_time"):
+    """
+    Compute rolling n-day accumulation (sum for 'tp', mean otherwise).
+    
+    Parameters
+    ----------
+    data : GeoDataFrame or DataFrame
+        Input data.
+    value_col : str
+        Column to roll (e.g. 't2m', 'tp').
+    days : int
+        Window size in days.
+    centering : bool
+        Center the window.
+    datetime_col : str
+        Column with datetimes.
 
+    Returns
+    -------
+    DataFrame
+        Rolled values with same columns.
+    """
+    gdf = gdf.copy()
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    #data = data.sort_values(datetime_col)
+
+    if value_col == "tp":
+        data_nday = (
+            gdf.set_index(datetime_col)[value_col]
+            .rolling(padding, min_periods=1, center=centering)
+            .sum()
+            .reset_index()
+        )
+    else:
+        data_nday = (
+            gdf.set_index(datetime_col)[value_col]
+            .rolling(padding, min_periods=1, center=centering)
+            .mean()
+            .reset_index()
+        )
+
+    return data_nday
 
 # Util
 #===============================================================================================================================================================

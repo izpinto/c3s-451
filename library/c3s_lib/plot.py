@@ -113,11 +113,12 @@ def visualize_geo(
 def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:bool=True,
              gridlines:bool=True, title:str=None, legend:bool=True, legend_title:str=None,
              cmap:str='coolwarm', fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]=None,
-             projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None
+             projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
+             dpi:int=100
              ):
     
     fig, ax = plt.subplots(
-        ncols = 1, nrows = 1, figsize = fig_size, dpi = 100, 
+        ncols = 1, nrows = 1, figsize = fig_size, dpi = dpi, 
         subplot_kw = {"projection" : projection}
         )   
 
@@ -178,7 +179,8 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
                 polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
                 cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
                 coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
-                projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None
+                projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
+                dpi:int=100
                 ):
     
     # Ensure datetime column is datetime type
@@ -191,7 +193,7 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
 
     # Create subplots with Cartopy projection
     fig, axes = plt.subplots(
-        nrows, ncols, figsize=figsize,
+        nrows, ncols, figsize=figsize, dpi=dpi,
         subplot_kw={'projection': projection}
     )
     axes = axes.flatten()
