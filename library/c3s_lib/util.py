@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 
 # Select a region using the C3S-451 Region Picker service
-def select_region(regionType, params:Dict[str, Any]=None):
+def select_region(regionType:str, params:Dict[str, Any]=None):
     
     allowed_region_types = ['wraf', 'hydrobasin']
     

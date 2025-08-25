@@ -14,6 +14,8 @@ import numpy as np
 from shapely import contains_xy
 import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
+from datetime import datetime
+import xarray as xr
 
 
 
@@ -106,7 +108,13 @@ def visualize_geo(
 
 
 
-def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, legend=True, legend_title=None, value_col='t2m', cmap='coolwarm', fig_size = (7,5), polygons:Polygon = None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
+
+# plots a single plot of a GeoDataFrame
+def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:bool=True,
+             gridlines:bool=True, title:str=None, legend:bool=True, legend_title:str=None,
+             cmap:str='coolwarm', fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]=None,
+             projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None
+             ):
     
     fig, ax = plt.subplots(
         ncols = 1, nrows = 1, figsize = fig_size, dpi = 100, 
@@ -153,7 +161,6 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
             x, y = poly.exterior.xy
             ax.plot(x, y, color='red', linewidth=2, transform=projection)
 
-    # add box around area of interest
     if title is not None:
         ax.set_title(title)
 
@@ -165,7 +172,15 @@ def plot_gdf(gdf, borders=True, coastlines=True, gridlines=True, title=None, leg
 
 
 
-def subplot_gdf(gdfs, datetime_col='valid_time', value_col='t2m', polygons=None, ncols=5, figsize=(20, 12), cmap='coolwarm', legend_title='Temperature (°C)', borders=True, coastlines=True, gridlines=True, suptitle=None, projection=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None):
+
+# plots multiple subplots of a GeoDataFrame in a single figure
+def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
+                polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
+                cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
+                coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
+                projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None
+                ):
+    
     # Ensure datetime column is datetime type
     gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
 
@@ -235,8 +250,8 @@ def subplot_gdf(gdfs, datetime_col='valid_time', value_col='t2m', polygons=None,
     cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=40)
     cbar.set_label(legend_title, labelpad=10, fontsize=12)
 
-    if suptitle:
-        fig.suptitle(suptitle, fontsize=16)
+    if subtitle:
+        fig.suptitle(subtitle, fontsize=16)
     
     # Set extent if provided
     if extends is not None:
@@ -247,61 +262,63 @@ def subplot_gdf(gdfs, datetime_col='valid_time', value_col='t2m', polygons=None,
 
 
 
-def plot_poly(polygons:Polygon, coords, elevation=None, projection=ccrs.PlateCarree()):
-  lons, lats = zip(*coords)
-  min_lon = min(lons)
-  max_lon = max(lons)
-  min_lat = min(lats)
-  max_lat = max(lats)
-
-  if elevation is not None:
-    elevation_subset = elevation.sel(
-        lon=slice(min_lon-3, max_lon+3),
-        lat=slice(min_lat-3, max_lat+3)  
-    )
-
-  fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': projection})
-
-  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
-  ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
-  ax.add_feature(cfeature.COASTLINE)
-  ax.add_feature(cfeature.LAND, edgecolor='black')
-  ax.gridlines(draw_labels=True)
-
-  # Set colorbar to 1:4 to keep water blue and land green
-  cax = inset_axes(
-      ax,
-      width="3%", height="100%",
-      loc='center left',
-      bbox_to_anchor=(1.1, 0., 1, 1),
-      bbox_transform=ax.transAxes,
-      borderpad=0
-  )
-
-  if elevation is not None:
-    elevation_plot = elevation_subset.plot(
-        ax=ax,
-        transform=projection,
-        cmap="terrain",
-        vmin=-250, vmax= 1000,
-        cbar_ax=cax,
-        cbar_kwargs={"label": "Elevation (m)"},
-        add_colorbar=True,
-        add_labels=False
-    )
-
-  ax.set_title("Selected regions")
-
-  for polygon in polygons:
-      x, y = polygon.exterior.xy
-      ax.plot(x, y, color='red', linewidth=2, transform=projection)
-      ax.fill(x, y, color='red', alpha=0.3, transform=projection)
-  
-  return fig, ax
 
 
+def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.DataArray=None, projection:cartopy.crs=ccrs.PlateCarree()):
+    lons, lats = zip(*coords)
+    min_lon = min(lons)
+    max_lon = max(lons)
+    min_lat = min(lats)
+    max_lat = max(lats)
 
-def plot_geometry(geom, ax, color='green', alpha=0.3, projection=ccrs.PlateCarree()):
+    if elevation is not None:
+        elevation_subset = elevation.sel(
+            lon=slice(min_lon-3, max_lon+3),
+            lat=slice(min_lat-3, max_lat+3)  
+        ) 
+
+    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': projection}) 
+
+    ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
+    ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.LAND, edgecolor='black')
+    ax.gridlines(draw_labels=True)  
+
+    # Set colorbar to 1:4 to keep water blue and land green
+    cax = inset_axes(
+        ax,
+        width="3%", height="100%",
+        loc='center left',
+        bbox_to_anchor=(1.1, 0., 1, 1),
+        bbox_transform=ax.transAxes,
+        borderpad=0
+    )   
+    if elevation is not None:
+        elevation_plot = elevation_subset.plot(
+            ax=ax,
+            transform=projection,
+            cmap="terrain",
+            vmin=-250, vmax= 1000,
+            cbar_ax=cax,
+            cbar_kwargs={"label": "Elevation (m)"},
+            add_colorbar=True,
+            add_labels=False
+        ) 
+
+    ax.set_title("Selected regions") 
+
+    for polygon in polygons:
+        x, y = polygon.exterior.xy
+        ax.plot(x, y, color='red', linewidth=2, transform=projection)
+        ax.fill(x, y, color='red', alpha=0.3, transform=projection)
+
+    return fig, ax
+
+
+
+
+def plot_geometry(geom, ax, color:str='green', alpha:float=0.3, projection:cartopy.crs=ccrs.PlateCarree()):
     if isinstance(geom, Polygon):
         x, y = geom.exterior.xy
         ax.plot(x, y, color=color, linewidth=2, transform=projection)
@@ -319,105 +336,106 @@ def plot_geometry(geom, ax, color='green', alpha=0.3, projection=ccrs.PlateCarre
 
 
 
-def elevation_region(data, polygons, elevation, threshold:int, projection=ccrs.PlateCarree()):
+
+
+def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, threshold:int, projection:cartopy.crs=ccrs.PlateCarree()):
   
-  all_coords = []
-  adjusted_polygons = []
+    all_coords = []
+    adjusted_polygons = []
 
-  for feature in data["features"]:
-      coords = feature['geometry']['coordinates'][0]
-      all_coords.extend(coords)
-      poly = Polygon(coords)
+    for feature in data["features"]:
 
-      minx, miny, maxx, maxy = poly.bounds
-      elev_subset = elevation.sel(
-          lon=slice(minx-0.5, maxx+0.5),
-          lat=slice(miny-0.5, maxy+0.5)  
-      )
+        coords = feature['geometry']['coordinates'][0]
+        all_coords.extend(coords)
+        poly = Polygon(coords)  
+        minx, miny, maxx, maxy = poly.bounds
+        elev_subset = elevation.sel(
+            lon=slice(minx-0.5, maxx+0.5),
+            lat=slice(miny-0.5, maxy+0.5)  
+        )   
+        elev_vals = elev_subset.squeeze().values
 
-      elev_vals = elev_subset.squeeze().values  
+        if elev_subset.lat.values[0] < elev_subset.lat.values[-1]:
+            elev_vals = elev_vals[::-1, :]  
+            lat = elev_subset.lat.values[::-1]
+        else:
+            lat = elev_subset.lat.values
 
-      if elev_subset.lat.values[0] < elev_subset.lat.values[-1]:
-          elev_vals = elev_vals[::-1, :]  
-          lat = elev_subset.lat.values[::-1]
-      else:
-          lat = elev_subset.lat.values
+        lon = elev_subset.lon.values    
+        lon2d, lat2d = np.meshgrid(lon, lat)    
+        below_thresh = elev_vals <= threshold   
+        inside_poly = contains_xy(poly, lon2d, lat2d)   
+        final_mask = below_thresh & inside_poly
 
-      lon = elev_subset.lon.values
+        transform = rasterio.transform.from_bounds(
+            lon.min(), lat.min(),   
+            lon.max(), lat.max(),   
+            len(lon), len(lat)
+        )   
+        from shapely.geometry import shape
 
-      lon2d, lat2d = np.meshgrid(lon, lat)
+        for geom, val in rasterio.features.shapes(
+                final_mask.astype(np.uint8),
+                mask=final_mask,
+                transform=transform):
+            
+            if val == 1:
+                new_poly = shape(geom)
+                clipped_poly = new_poly.intersection(poly)
 
-      below_thresh = elev_vals <= threshold
+                if not clipped_poly.is_empty:
+                    adjusted_polygons.append(clipped_poly)
 
-      inside_poly = contains_xy(poly, lon2d, lat2d)
+    lons, lats = zip(*all_coords)
+    min_lon = min(lons)
+    max_lon = max(lons)
+    min_lat = min(lats)
+    max_lat = max(lats)
 
-      final_mask = below_thresh & inside_poly
+    fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': projection})
 
-      transform = rasterio.transform.from_bounds(
-          lon.min(), lat.min(),   
-          lon.max(), lat.max(),   
-          len(lon), len(lat)
-      )
+    ax.set_title(f"Selected regions under {threshold} m elevation")
+    ax.add_feature(cfeature.BORDERS, linestyle=':')
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.LAND, edgecolor='black')
+    ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
+    ax.gridlines(draw_labels=True)
 
-      from shapely.geometry import shape
+    cax = inset_axes(
+        ax,
+        width="3%", height="100%",
+        loc='center left',
+        bbox_to_anchor=(1.1, 0., 1, 1),
+        bbox_transform=ax.transAxes,
+        borderpad=0
+    )
 
-      for geom, val in rasterio.features.shapes(
-              final_mask.astype(np.uint8),
-              mask=final_mask,
-              transform=transform):
-          if val == 1:
-              new_poly = shape(geom)
-              clipped_poly = new_poly.intersection(poly)
-              if not clipped_poly.is_empty:
-                  adjusted_polygons.append(clipped_poly)
+    elev_plot = elevation.plot(
+        ax=ax,
+        transform=projection,
+        cmap="terrain",
+        cbar_ax=cax,
+        cbar_kwargs={"label": "Elevation (m)"},
+        add_colorbar=True,
+        add_labels=False,
+        vmin=0, 
+        vmax=threshold  
+    )
 
-  lons, lats = zip(*all_coords)
-  min_lon = min(lons)
-  max_lon = max(lons)
-  min_lat = min(lats)
-  max_lat = max(lats)
+    for poly in polygons:
+        x, y = poly.exterior.xy
+        ax.plot(x, y, color='red', linewidth=2, transform=projection)
 
-  fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': projection})
-  ax.set_title(f"Selected regions under {threshold} m elevation")
-  ax.add_feature(cfeature.BORDERS, linestyle=':')
-  ax.add_feature(cfeature.COASTLINE)
-  ax.add_feature(cfeature.LAND, edgecolor='black')
-  ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
-  ax.gridlines(draw_labels=True)
+    for geom in adjusted_polygons:
+        plot_geometry(geom, ax)
 
-  cax = inset_axes(
-      ax,
-      width="3%", height="100%",
-      loc='center left',
-      bbox_to_anchor=(1.1, 0., 1, 1),
-      bbox_transform=ax.transAxes,
-      borderpad=0
-  )
+    return fig, ax, adjusted_polygons
 
-  elev_plot = elevation.plot(
-      ax=ax,
-      transform=projection,
-      cmap="terrain",
-      cbar_ax=cax,
-      cbar_kwargs={"label": "Elevation (m)"},
-      add_colorbar=True,
-      add_labels=False,
-      vmin=0, 
-      vmax=threshold  
-  )
 
-  for poly in polygons:
-      x, y = poly.exterior.xy
-      ax.plot(x, y, color='red', linewidth=2, transform=projection)
-
-  for geom in adjusted_polygons:
-      plot_geometry(geom, ax)
-
-  return fig, ax, adjusted_polygons
 
 
 # plot a timeseries of a GeoDataFrame [date, value]
-def plot_timeseries(data, title, x_label, y_label, label_rotation=0, dateformat="%Y-%m-%d", x_ticks=mdates.DayLocator(), color='darkblue', linewidth=2.0, linestyle='-'):
+def plot_timeseries(data:gpd.GeoDataFrame, title:str, x_label:str, y_label:str, label_rotation:int=0, dateformat:str="%Y-%m-%d", x_ticks:mdates.DayLocator=mdates.DayLocator(), color:str='darkblue', linewidth:float=2.0, linestyle:str='-'):
 
     fig, ax = plt.subplots(figsize=(12, 5))
 
@@ -455,154 +473,11 @@ def plot_timeseries(data, title, x_label, y_label, label_rotation=0, dateformat=
     return fig, ax
 
 
-# add standard deviation
-def n_day_accumulations_gdf(data, value_col, parameter, event_date, labelticks, labels, centering=False, datetime_col="valid_time", days=None, ylimit=None):
-
-    fig, axs = plt.subplots(ncols=4, figsize=(20, 3), dpi=100, sharey=True)
-
-    # Ensure datetime and sorted
-    data = data.copy()
-    data[datetime_col] = pd.to_datetime(data[datetime_col])
-    data = data.sort_values(datetime_col)
-
-    for i in range(4):
-        ax = axs[i]
-
-        # Determine n-day window
-        if days is not None:
-            ndays = days[i]
-        elif value_col == 't2m':
-            ndays = [1, 3, 7, 14][i]
-        elif value_col == 'tp':
-            ndays = [1, 3, 5, 10][i]
-        else:
-            ndays = [1, 3, 5, 11][i]
-
-        if value_col == "tp":
-            data_nday = (
-                data.set_index(datetime_col)
-                    [value_col]
-                    .rolling(ndays, min_periods=1, center=centering)
-                    .sum()
-                    .reset_index()
-            )
-        else:
-            data_nday = (
-                data.set_index(datetime_col)
-                    [value_col]
-                    .rolling(ndays, min_periods=1, center=centering)
-                    .mean()
-                    .reset_index()
-            )
-
-
-        # Plot each year in blue
-        for y in data_nday[datetime_col].dt.year.unique():
-            data_y = data_nday[data_nday[datetime_col].dt.year == y]
-            ax.plot(
-                data_y[datetime_col].dt.dayofyear,
-                data_y[value_col],
-                color="tab:blue",
-                alpha=0.3
-            )
-
-        # Style the plot
-        ax.set_xticks(labelticks)
-        ax.set_xticklabels(labels)
-        ax.grid(axis="x", color="k", alpha=0.2)
-        ax.set_title(f"{ndays}-day accumulated {parameter}")
-
-        # Highlight date window
-        ylim = ax.get_ylim()
-        print(ylim)
-
-        dayofyear = pd.to_datetime(event_date).dayofyear
-        ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000,
-                               color="gold", alpha=0.3))
-        ax.set_ylim(ylim)
-
-        # Highlight selected year
-        year2 = pd.to_datetime(event_date)
-        data_y = data_nday[data_nday[datetime_col] <= year2]
-        ax.plot(data_y[datetime_col].dt.dayofyear, data_y[value_col], color="k")
-
-    if ylimit is not None:
-        ax.set_ylim(0, ylimit)
-
-    return fig, axs
-
-
-
-
-# def plot_n_day_accumulations(rolled_data_list, value_col, parameter, event_date, labelticks, labels, days, ylimit=None, datetime_col="valid_time"):
-#     """
-#     Plot n-day rolling accumulations for different windows.
-    
-#     Parameters
-#     ----------
-#     rolled_data_list : list of DataFrames
-#         List of results from n_day_accumulations_gdf(), one per window.
-#     value_col : str
-#         Column that was rolled.
-#     parameter : str
-#         Parameter name for titles.
-#     event_date : str or datetime
-#         Highlight date.
-#     labelticks : list
-#         X-axis tick positions.
-#     labels : list
-#         X-axis tick labels.
-#     days : list
-#         List of window sizes.
-#     ylimit : int or None
-#         Upper limit for y-axis.
-#     datetime_col : str
-#         Column with datetimes.
-#     """
-#     fig, axs = plt.subplots(ncols=len(rolled_data_list), figsize=(5 * len(rolled_data_list), 3), dpi=100, sharey=True)
-
-#     if len(rolled_data_list) == 1:
-#         axs = [axs]  # make iterable if only one axis
-
-#     for ax, data_nday, ndays in zip(axs, rolled_data_list, days):
-#         # Plot each year in blue
-#         for y in data_nday[datetime_col].dt.year.unique():
-#             data_y = data_nday[data_nday[datetime_col].dt.year == y]
-#             ax.plot(
-#                 data_y[datetime_col].dt.dayofyear,
-#                 data_y[value_col],
-#                 color="tab:blue",
-#                 alpha=0.3
-#             )
-
-#         # Style the plot
-#         ax.set_xticks(labelticks)
-#         ax.set_xticklabels(labels)
-#         ax.grid(axis="x", color="k", alpha=0.2)
-#         ax.set_title(f"{ndays}-day accumulated {parameter}")
-
-#         # Highlight date window
-#         ylim = ax.get_ylim()
-#         dayofyear = pd.to_datetime(event_date).dayofyear
-#         ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000, color="gold", alpha=0.3))
-#         ax.set_ylim(ylim)
-
-#         # Highlight selected year (all up to event_date)
-#         year2 = pd.to_datetime(event_date)
-#         data_y = data_nday[data_nday[datetime_col] <= year2]
-#         ax.plot(data_y[datetime_col].dt.dayofyear, data_y[value_col], color="k")
-
-#         if ylimit is not None:
-#             ax.set_ylim(0, ylimit)
-
-#     return fig, axs
-
-
 
 
 def plot_n_day_accumulations(
-    rolled_data_list, value_col, parameter, event_date,
-    labelticks, labels, days, ylimit=None, datetime_col="valid_time"
+    rolled_data_list:list[gpd.GeoDataFrame], value_col:str, parameter:str, event_date:datetime,
+    labelticks:list[int], labels:list[any], days:list[int], ylimit:int=None, datetime_col:str="valid_time"
 ):
     """
     Plot n-day rolling accumulations for different windows.
