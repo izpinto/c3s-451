@@ -134,7 +134,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     # Plot the GeoDataFrame
     gdf.plot(ax = ax, **temp_kwargs,
         legend=legend, legend_kwds={'label': legend_title},
-        column = value_col,
+        column = value_col, marker='s'
         )
 
     # Add contextily basemap
@@ -180,7 +180,7 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
                 cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
                 coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
                 projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-                dpi:int=100
+                dpi:int=100, flatten_empty_plots:bool=True
                 ):
     
     # Ensure datetime column is datetime type
@@ -199,8 +199,8 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
     axes = axes.flatten()
 
     # Normalize color scale across all data
-    vmin = gdfs[value_col].min()
-    vmax = gdfs[value_col].max()
+    vmin = math.floor(gdfs[value_col].min())
+    vmax = math.ceil(gdfs[value_col].max())
 
     for i, day in enumerate(unique_days):
         ax = axes[i]
@@ -216,6 +216,7 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
             legend=False,  # legend handled once globally
             vmin=vmin,
             vmax=vmax,
+            marker='s'
         )
 
         if gridlines:
@@ -243,12 +244,11 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
 
     # Hide any unused subplots
     for j in range(i + 1, len(axes)):
-        axes[j].set_visible(False)
+        axes[j].set_visible(not flatten_empty_plots)
 
-    # Add shared colorbar to the right
+    # Add shared colorbar to the top
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
     sm._A = []
-    #cbar_ax = fig.add_axes([.2, .95, .6, .02])
     cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=40)
     cbar.set_label(legend_title, labelpad=10, fontsize=12)
 

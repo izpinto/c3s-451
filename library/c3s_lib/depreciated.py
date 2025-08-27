@@ -15,6 +15,8 @@ from shapely import contains_xy
 import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 from datetime import datetime, timedelta
+from typing import Union, Literal
+
 
 
 
@@ -219,7 +221,7 @@ def depreciated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoD
 
 
 
-def depreciated_n_day_accumulations_gdf(gdf, value_col:str, padding:int, centering:bool=False, datetime_col:str="valid_time"):
+def depreciated_n_day_accumulations_gdf1(gdf, value_col:str, padding:int, centering:bool=False, datetime_col:str="valid_time"):
     """
     Compute rolling n-day accumulation (sum for 'tp', mean otherwise).
     
@@ -261,6 +263,57 @@ def depreciated_n_day_accumulations_gdf(gdf, value_col:str, padding:int, centeri
         )
 
     return data_nday
+
+def depreciated_n_day_accumulations_gdf2(
+    gdf:Union[pd.DataFrame, gpd.GeoDataFrame], value_col:str, padding:int,
+    centering:bool=False, datetime_col:str="valid_time",
+    method:Literal["sum", "mean", "std", "quantile"]="mean", quantile:float=0.9
+):
+    """
+    Compute rolling n-day statistics (sum, mean, std, quantile).
+    
+    Parameters
+    ----------
+    gdf : GeoDataFrame or DataFrame
+        Input data.
+    value_col : str
+        Column to roll (e.g. 't2m', 'tp').
+    padding : int
+        Window size in days.
+    centering : bool
+        Center the window.
+    datetime_col : str
+        Column with datetimes.
+    method : {"sum", "mean", "std", "quantile"}
+        Rolling aggregation method.
+    q : float, optional
+        Quantile to compute if method="quantile". Default is 0.5 (median).
+
+    Returns
+    -------
+    DataFrame
+        Rolled values with same columns.
+    """
+
+    gdf = gdf.copy()
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    
+    roller = gdf.set_index(datetime_col)[value_col].rolling(
+        padding, min_periods=1, center=centering
+    )
+
+    if method == "sum":
+        result = roller.sum()
+    elif method == "mean":
+        result = roller.mean()
+    elif method == "std":
+        result = roller.std()
+    elif method == "quantile":
+        result = roller.quantile(quantile)
+    else:
+        raise ValueError(f"Unsupported method: {method}")
+
+    return result.reset_index()
 
 # Util
 #===============================================================================================================================================================

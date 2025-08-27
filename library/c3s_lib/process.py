@@ -7,7 +7,7 @@ from typing import Union, Literal
 # this does not account for dates that are outside of the range of the data such as januari 1-14 and december 18-31
 def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes.DatetimeArray,
                        value_col:str, padding:int=15, year_range:tuple[int, int]=None,
-                       datetime_col:str="valid_time"
+                       datetime_col:str="valid_time", group_by:list[str]=["longitude", "latitude", "geometry"]
                        ):
     """
     Calculate mean climatology values around each date in date_range across years,
@@ -41,12 +41,26 @@ def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes
 
     climatology = []
 
+    date_min = gdf[datetime_col].min()
+    date_max = gdf[datetime_col].max()
+
     for target_date in date_range:
         results = []
         for year in gdf[datetime_col].dt.year.unique():
-            center_date = datetime(year, target_date.month, target_date.day)
-            start = center_date - timedelta(days=padding)
-            end = center_date + timedelta(days=padding)
+            try:
+                center_date = datetime(year, target_date.month, target_date.day)
+            except ValueError:
+                # should we skip feb 29? use 28 instead? or use next day?
+                continue
+
+            # skip if center_date not in gdf
+            if pd.Timestamp(center_date) not in gdf[datetime_col].values:
+                print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
+                continue
+
+            # range should never exceed data range
+            start = max(center_date - timedelta(days=padding), date_min)
+            end = min(center_date + timedelta(days=padding), date_max)
 
             subset = gdf[(gdf[datetime_col] >= start) & (gdf[datetime_col] <= end)]
             results.append(subset)
@@ -54,7 +68,14 @@ def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes
         combined = pd.concat(results, ignore_index=True)
 
         # Average per geometry
-        mean_gdf = combined.groupby(["longitude", "latitude", "geometry"])[value_col].mean().reset_index()
+        if group_by:
+            mean_gdf = combined.groupby(group_by)[value_col].mean().reset_index()
+        else:
+            mean_val = combined[value_col].mean()
+            mean_gdf = pd.DataFrame({
+                value_col: [mean_val],
+                datetime_col: [target_date]
+            })
 
         # Assign the target date as valid_time
         mean_gdf[datetime_col] = target_date
@@ -67,7 +88,6 @@ def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes
         crs=gdf.crs
     )
     return climatology_gdf
-
 
 
 
@@ -127,13 +147,19 @@ def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDa
 
 
 def n_day_accumulations_gdf(
-    gdf:Union[pd.DataFrame, gpd.GeoDataFrame], value_col:str, padding:int,
-    centering:bool=False, datetime_col:str="valid_time",
-    method:Literal["sum", "mean", "std", "quantile"]="mean", quantile:float=0.9
+    gdf: Union[pd.DataFrame, gpd.GeoDataFrame],
+    value_col: str,
+    padding: int,
+    centering: bool = False,
+    datetime_col: str = "valid_time",
+    method: Literal["sum", "mean", "std", "quantile"] = "mean",
+    quantile: float = 0.9,
+    group_by: list[str] = None
 ):
     """
-    Compute rolling n-day statistics (sum, mean, std, quantile).
-    
+    Compute rolling n-day statistics (sum, mean, std, quantile) for each point
+    or globally.
+
     Parameters
     ----------
     gdf : GeoDataFrame or DataFrame
@@ -148,31 +174,63 @@ def n_day_accumulations_gdf(
         Column with datetimes.
     method : {"sum", "mean", "std", "quantile"}
         Rolling aggregation method.
-    q : float, optional
-        Quantile to compute if method="quantile". Default is 0.5 (median).
+    quantile : float, optional
+        Quantile to compute if method="quantile".
+    group_by : list[str], optional
+        Columns to group by before rolling. If None, roll globally.
 
     Returns
     -------
-    DataFrame
-        Rolled values with same columns.
+    DataFrame or GeoDataFrame
+        Same as input, with rolled values in `value_col`.
     """
 
     gdf = gdf.copy()
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-    
-    roller = gdf.set_index(datetime_col)[value_col].rolling(
-        padding, min_periods=1, center=centering
-    )
 
-    if method == "sum":
-        result = roller.sum()
-    elif method == "mean":
-        result = roller.mean()
-    elif method == "std":
-        result = roller.std()
-    elif method == "quantile":
-        result = roller.quantile(quantile)
+    if group_by is None:
+        group_by = []  # roll globally
+
+    def apply_roll(group):
+        roller = group.set_index(datetime_col)[value_col].rolling(
+            window=padding, min_periods=1, center=centering
+        )
+        if method == "sum":
+            rolled = roller.sum()
+        elif method == "mean":
+            rolled = roller.mean()
+        elif method == "std":
+            rolled = roller.std()
+        elif method == "quantile":
+            rolled = roller.quantile(quantile)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+
+        group[value_col] = rolled.values
+        return group
+
+    if group_by:
+        # rolling separately for each group (e.g. per lat/lon/geometry)
+        result = gdf.groupby(group_by, group_keys=False).apply(apply_roll)
     else:
-        raise ValueError(f"Unsupported method: {method}")
+        # single global time series
+        roller = gdf.set_index(datetime_col)[value_col].rolling(
+            window=padding, min_periods=1, center=centering
+        )
+        if method == "sum":
+            rolled = roller.sum()
+        elif method == "mean":
+            rolled = roller.mean()
+        elif method == "std":
+            rolled = roller.std()
+        elif method == "quantile":
+            rolled = roller.quantile(quantile)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
 
-    return result.reset_index()
+        result = rolled.reset_index()  # only datetime + value
+
+    # preserve GeoDataFrame type if input was GeoDataFrame
+    if isinstance(gdf, gpd.GeoDataFrame):
+        return gpd.GeoDataFrame(result, geometry="geometry", crs=gdf.crs)
+    return result
