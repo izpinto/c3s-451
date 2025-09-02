@@ -180,7 +180,7 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
                 cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
                 coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
                 projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-                dpi:int=100, flatten_empty_plots:bool=True
+                dpi:int=100, flatten_empty_plots:bool=True, marker:str='o'
                 ):
     
     # Ensure datetime column is datetime type
@@ -194,7 +194,7 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
     # Create subplots with Cartopy projection
     fig, axes = plt.subplots(
         nrows, ncols, figsize=figsize, dpi=dpi,
-        subplot_kw={'projection': projection}
+        subplot_kw={'projection': projection},
     )
     axes = axes.flatten()
 
@@ -216,7 +216,7 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
             legend=False,  # legend handled once globally
             vmin=vmin,
             vmax=vmax,
-            marker='s'
+            marker=marker
         )
 
         if gridlines:
@@ -242,6 +242,10 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
 
         ax.set_title(f"{day}", fontsize=10)
 
+            # Set extent if provided
+        if extends is not None:
+            ax.set_extent(extends, crs=projection)
+
     # Hide any unused subplots
     for j in range(i + 1, len(axes)):
         axes[j].set_visible(not flatten_empty_plots)
@@ -254,10 +258,6 @@ def subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_ti
 
     if subtitle:
         fig.suptitle(subtitle, fontsize=16)
-    
-    # Set extent if provided
-    if extends is not None:
-      ax.set_extent(extends, crs=projection)
 
     #plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
     return fig, axes

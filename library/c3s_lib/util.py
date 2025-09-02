@@ -4,6 +4,11 @@ from shapely.geometry import Polygon
 import webbrowser
 from urllib.parse import urlencode
 from typing import Dict, Any
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cmocean
+import base64
+from io import BytesIO
 
 
 # Select a region using the C3S-451 Region Picker service
@@ -93,3 +98,39 @@ def data_2_poly(data):
         polygons.append(Polygon(coords))
     
     return polygons, all_coords
+
+def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:int=100, cmap=cmocean.cm.thermal, projection=ccrs.PlateCarree()):
+
+    selected_gdf_anomoly = gdf[(gdf[datetime_col] >= date) & (gdf[datetime_col] <= date)]
+
+    vmin = gdf[value_col].min()
+    vmax = gdf[value_col].max()
+
+    fig, ax = plt.subplots(
+        ncols = 1, nrows = 1, figsize = (5,5), dpi = dpi, 
+        subplot_kw = {"projection" : projection}
+    )
+
+    # ax.plot(selected_gdf_anomoly['longitude'], selected_gdf_anomoly['latitude'], "o", markersize=1)  # markersize = diameter in points
+
+    temp_kwargs = {"cmap" : cmap}
+
+    selected_gdf_anomoly.plot(ax = ax, **temp_kwargs,
+        column = value_col,
+        vmin = vmin,
+        vmax = vmax
+    )
+
+    ax.set_axis_off()
+    plt.tight_layout()
+
+    # Save to memory buffer instead of file
+    buf = BytesIO()
+    plt.savefig(buf, format="png", dpi=100, transparent=True, bbox_inches="tight", pad_inches=0)
+    buf.seek(0)
+
+    # Encode to base64
+    img_base64 = base64.b64encode(buf.read()).decode("utf-8")
+    buf.close()
+
+    return img_base64
