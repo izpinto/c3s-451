@@ -40,7 +40,9 @@ dependencies = [
   "plotly",
   "contextily",
   "regionmask",
-  "cmocean"
+  "cmocean",
+  "beacon-api",
+  "cartopy"
 ]
 
 [tool.setuptools]
