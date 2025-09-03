@@ -133,7 +133,7 @@ def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDa
     if calcation == "subtract":
         merged[value_col] = merged[value_col] - merged[f"{value_col}_mean"]
     elif calcation == "divide":
-        merged[value_col] = merged[value_col] / merged[f"{value_col}_mean"]
+        merged[value_col] = (merged[value_col] - merged[f"{value_col}_mean"]) / merged[f"{value_col}_mean"]
     else:
         raise ValueError("calcation must be 'subtract' or 'divide'")
 
@@ -187,6 +187,8 @@ def n_day_accumulations_gdf(
 
     gdf = gdf.copy()
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+    gdf = gdf[~((gdf[datetime_col].dt.month == 2) & (gdf[datetime_col].dt.day == 29))]
 
     if group_by is None:
         group_by = []  # roll globally
