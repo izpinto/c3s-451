@@ -2,9 +2,11 @@ from datetime import datetime, timedelta
 import pandas as pd
 import geopandas as gpd
 from typing import Union, Literal
+import numpy as np
 
 
-# this does not account for dates that are outside of the range of the data such as januari 1-14 and december 18-31
+
+# Don't use
 def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes.DatetimeArray,
                        value_col:str, padding:int=15, year_range:tuple[int, int]=None,
                        datetime_col:str="valid_time", group_by:list[str]=["longitude", "latitude", "geometry"]
@@ -236,3 +238,54 @@ def n_day_accumulations_gdf(
     if isinstance(gdf, gpd.GeoDataFrame):
         return gpd.GeoDataFrame(result, geometry="geometry", crs=gdf.crs)
     return result
+
+
+
+
+def sliding_stat_by_dayofyear(gdf, value_col:str, padding:int=15, datetime_col:str="valid_time"):
+    """
+    Parameters:
+    -----------
+    data : ...
+    pad : int
+        Number of days on either side to include in the window (default: 15 → 30-day window)
+
+    Returns:
+    --------
+    """
+    # Ensure 'time' column is datetime
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+    # Boolean mask: keep all rows NOT Feb 29
+    mask = ~((gdf[datetime_col].dt.month == 2) & (gdf[datetime_col].dt.day == 29))
+
+    # Apply mask
+    gdf = gdf[mask]
+
+    days = np.arange(1, 366)  # Days of year
+
+    gdf['doy'] = gdf[datetime_col].dt.dayofyear
+
+    gdf['longitude'] = gdf.geometry.x
+    gdf['latitude'] = gdf.geometry.y
+
+    result_list = []
+
+    for day in days:
+        # Build ±pad-day window (cyclically)
+        window_days = [(day + offset - 1) % 365 + 1 for offset in range(-padding, padding + 1)]
+        
+        window_data = gdf[gdf['doy'].isin(window_days)]
+
+        # Compute mean at each location
+        daily_mean = (
+            window_data.groupby(['longitude', 'latitude'])[value_col]
+            .mean()
+            .reset_index()
+        )
+        
+        daily_mean['doy'] = day
+        result_list.append(daily_mean)
+        doy_mean_gdf = pd.concat(result_list, ignore_index=True)
+
+    return doy_mean_gdf

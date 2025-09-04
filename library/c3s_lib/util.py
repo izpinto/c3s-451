@@ -19,6 +19,8 @@ def select_region(regionType:str, params:Dict[str, Any]=None):
     if regionType not in allowed_region_types:
         raise ValueError(f"Invalid regionType '{regionType}'. Allowed values are: {allowed_region_types}")
     
+    print('The region picker will shortly open in your web browser. Please select a region, close the browser tab and return to the notebook when done.')
+    
     url = f"http://c3s-451/region-picker/start-m2m/{regionType}"
 
     #if params != None:
@@ -99,7 +101,7 @@ def data_2_poly(data):
     
     return polygons, all_coords
 
-def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:int=100, cmap=cmocean.cm.thermal, projection=ccrs.PlateCarree()):
+def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:int=100, cmap=cmocean.cm.thermal, projection=ccrs.PlateCarree(), show_fig:bool=False, marker:str='s'):
 
     selected_gdf_anomoly = gdf[(gdf[datetime_col] >= date) & (gdf[datetime_col] <= date)]
 
@@ -118,7 +120,8 @@ def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:in
     selected_gdf_anomoly.plot(ax = ax, **temp_kwargs,
         column = value_col,
         vmin = vmin,
-        vmax = vmax
+        vmax = vmax,
+        marker = marker
     )
 
     ax.set_axis_off()
@@ -127,6 +130,8 @@ def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:in
     # Save to memory buffer instead of file
     buf = BytesIO()
     plt.savefig(buf, format="png", dpi=100, transparent=True, bbox_inches="tight", pad_inches=0)
+    if not show_fig:
+        plt.close(fig)  # Close the figure to avoid displaying it in non-interactive environments
     buf.seek(0)
 
     # Encode to base64
