@@ -253,6 +253,99 @@ def depreciated_subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:s
     return fig, axes
 
 
+# plots multiple subplots of a GeoDataFrame in a single figure
+def depreciated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
+                polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
+                cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
+                coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
+                projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
+                dpi:int=100, flatten_empty_plots:bool=True, marker:str='o'
+                ):
+
+    # Ensure datetime column is datetime type
+    gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
+
+    # Unique days sorted
+    unique_days = sorted(gdfs[datetime_col].dt.date.unique())
+    n_plots = len(unique_days)
+    nrows = math.ceil(n_plots / ncols)
+
+    # Create subplots with Cartopy projection
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=figsize, dpi=dpi,
+        subplot_kw={'projection': projection},
+    )
+    axes = axes.flatten()
+
+    # Normalize color scale across all data
+    vmin = math.floor(gdfs[value_col].min())
+    vmax = math.ceil(gdfs[value_col].max())
+
+    for i, day in enumerate(unique_days):
+        ax = axes[i]
+
+        # Filter GeoDataFrame for this day
+        day_gdf = gdfs[gdfs[datetime_col].dt.date == day]
+
+        # Plot data on this subplot
+        day_gdf.plot(
+            ax=ax,
+            column=value_col,
+            cmap=cmap,
+            legend=False,  # legend handled once globally
+            vmin=vmin,
+            vmax=vmax,
+            marker=marker
+        )
+
+        if gridlines:
+            ax.gridlines(
+                crs=projection,
+                linewidth=0.5,
+                color='black',
+                draw_labels=["bottom", "left"],
+                alpha=0.2
+            )
+
+        if coastlines:
+            ax.coastlines()
+
+        if borders:
+            ax.add_feature(cartopy.feature.BORDERS, lw=1, alpha=0.7, ls="--")
+
+        # Draw polygons if provided
+        if polygons is not None:
+            for poly in polygons:
+                x, y = poly.exterior.xy
+                ax.plot(x, y, color='red', linewidth=2, transform=projection)
+
+        ax.set_title(f"{day}", fontsize=18, color='darkblue', weight='medium')
+
+            # Set extent if provided
+        if extends is not None:
+            ax.set_extent(extends, crs=projection)
+
+    # Hide any unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(not flatten_empty_plots)
+
+    # Add shared colorbar to the top
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm._A = []
+    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=40)
+    cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='darkblue')
+    # set colorbar ticklabels
+    cbar.ax.xaxis.set_tick_params(color='darkgrey') # dont work
+    plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), color='darkgrey') # dont work
+
+    if subtitle:
+        fig.suptitle(subtitle)
+
+    #plt.tight_layout(rect=[0, 0, 0.95, 0.95])  # leave room for suptitle and colorbar
+    return fig, axes
+
+
+
 
 # Process
 #===============================================================================================================================================================
