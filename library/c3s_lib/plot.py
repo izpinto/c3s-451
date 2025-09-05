@@ -18,18 +18,42 @@ from datetime import datetime
 import xarray as xr
 import matplotlib.font_manager as fm
 import os
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+import cmocean
 
+# set font directory
 BASE_DIR = os.path.dirname(__file__)
 font_path = os.path.join(BASE_DIR, "RobotoCondensed-Regular.ttf")
 roboto_condensed_regular = fm.FontProperties(fname=font_path)
 fm.fontManager.addfont(font_path)
 
-# set font family globally
+# set font family and settings globally
 plt.rcParams["font.family"] = roboto_condensed_regular.get_name()
 plt.rcParams["font.size"] = 13
 plt.rcParams["axes.labelcolor"] = "darkgrey"     # 🔹 x/y axis labels
 plt.rcParams["xtick.color"] = "darkgrey"         # 🔹 x-axis tick labels
 plt.rcParams["ytick.color"] = "darkgrey"         # 🔹 y-axis tick labels
+
+# set colormaps
+temperature_colors = [
+    "#204182", "#24569c", "#559bd4", "#95d0f0", "#cee9f5", "#f6fcfe",
+    "#fff1ba", "#ffc656", "#f6862f", "#e8432a", "#b92027"
+]
+precipitation_colors = ["#693f18", "#ffffff", "#204182"]
+
+# create colormap
+temperature_cmap = ListedColormap(temperature_colors, name="temperature_cmap")
+precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=11)
+
+def get_colormap(map:str): 
+
+    match map:
+        case 't2m':
+            return temperature_cmap
+        case 'tp':
+            return precipitation_cmap
+        case _:
+            return map
 
 def visualize_geo(
     df,
@@ -124,10 +148,13 @@ def visualize_geo(
 # plots a single plot of a GeoDataFrame
 def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:bool=True,
              gridlines:bool=True, title:str=None, legend:bool=True, legend_title:str=None,
-             cmap:str='coolwarm', fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]=None,
+             cmap:str=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]=None,
              projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-             dpi:int=100, marker:str='o'
+             dpi:int=100, marker:str='s'
              ):
+    
+    # get colormap
+    cmap = get_colormap(cmap if cmap else value_col)
 
     fig, ax = plt.subplots(
         ncols = 1, nrows = 1, figsize = fig_size, dpi = dpi, 
@@ -193,12 +220,16 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
 def subplot_gdf(
     gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
     polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
-    cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
+    cmap:str=None, legend_title:str='Temperature (°C)', borders:bool=True,
     coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
     projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-    dpi:int=100, flatten_empty_plots:bool=True, marker:str='o',
+    dpi:int=100, flatten_empty_plots:bool=True, marker:str='s',
     shared_colorbar:bool=True   # 👈 new parameter
 ):
+    
+    # get colormap
+    cmap = get_colormap(cmap if cmap else value_col)
+
     # Ensure datetime column is datetime type
     gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
 
