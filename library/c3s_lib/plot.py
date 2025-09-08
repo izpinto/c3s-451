@@ -29,10 +29,17 @@ fm.fontManager.addfont(font_path)
 
 # set font family and settings globally
 plt.rcParams["font.family"] = roboto_condensed_regular.get_name()
+plt.rcParams["axes.titlecolor"] = "#364563"
+plt.rcParams["figure.titlesize"] = 27
+plt.rcParams["axes.titlesize"] = 27
 plt.rcParams["font.size"] = 13
-plt.rcParams["axes.labelcolor"] = "darkgrey"     # 🔹 x/y axis labels
-plt.rcParams["xtick.color"] = "darkgrey"         # 🔹 x-axis tick labels
-plt.rcParams["ytick.color"] = "darkgrey"         # 🔹 y-axis tick labels
+plt.rcParams["axes.labelcolor"] = "#6a6a6b"     # 🔹 x/y axis labels
+plt.rcParams["xtick.color"] = "#6a6a6b"         # 🔹 x-axis tick labels
+plt.rcParams["xtick.labelcolor"] = "#6a6a6b"
+plt.rcParams["xtick.labelsize"] = 13
+plt.rcParams["ytick.color"] = "#6a6a6b"         # 🔹 y-axis tick labels
+plt.rcParams["ytick.labelcolor"] = "#6a6a6b"
+plt.rcParams["ytick.labelsize"] = 13
 
 # set colormaps
 temperature_colors = [
@@ -206,7 +213,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
                      fontdict={
                         'fontsize': 27,
                         'fontweight': 'bold',
-                        'color': 'darkblue'
+                        # 'color': '#364563'
                      })
 
     # Set extent if provided
@@ -295,7 +302,7 @@ def subplot_gdf(
                 x, y = poly.exterior.xy
                 ax.plot(x, y, color='red', linewidth=2, transform=projection)
 
-        ax.set_title(f"{day}", fontsize=18, color='darkblue', weight='medium')
+        ax.set_title(f"{day}", fontsize=18, weight='medium')
 
         if extends is not None:
             ax.set_extent(extends, crs=projection)
@@ -311,9 +318,10 @@ def subplot_gdf(
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         sm._A = []
         cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=60)
-        cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='darkblue')
-        plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), color='darkgrey')
-
+        cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
+        plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=roboto_condensed_regular.get_name(), fontsize=13)
+        plt.show()
+    
     if subtitle:
         fig.suptitle(subtitle)
 
@@ -329,9 +337,6 @@ def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.Dat
     max_lon = max(lons)
     min_lat = min(lats)
     max_lat = max(lats)
-
-    #set font family globally
-    plt.rcParams["font.family"] = "Roboto Condensed"
 
     if elevation is not None:
         elevation_subset = elevation.sel(
@@ -382,9 +387,6 @@ def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.Dat
 
 def plot_geometry(geom, ax, color:str='green', alpha:float=0.3, projection:cartopy.crs=ccrs.PlateCarree()):
 
-    #set font family globally
-    plt.rcParams["font.family"] = "Roboto Condensed"
-
     if isinstance(geom, Polygon):
         x, y = geom.exterior.xy
         ax.plot(x, y, color=color, linewidth=2, transform=projection)
@@ -405,9 +407,6 @@ def plot_geometry(geom, ax, color:str='green', alpha:float=0.3, projection:carto
 
 
 def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, threshold:int, projection:cartopy.crs=ccrs.PlateCarree()):
-  
-    #set font family globally
-    plt.rcParams["font.family"] = "Roboto Condensed"
 
     all_coords = []
     adjusted_polygons = []
@@ -505,22 +504,26 @@ def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, 
 
 def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
                    fig_size:tuple=(12,6), dpi:int=100, show_grid:bool=True, line_style:str=':', marker_style:str=None, 
-                   draw_style:str='default', label_rotation:int=0, line_width:float=1.5):
+                   draw_style:str='default', label_rotation:int=0, line_width:float=1.5, labelticks:list[str]=None, labels:list[str]=None):
     
-    #set font family globally
     fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
 
     ax.plot(data[datetime_col], data[value_col], 
-            color='darkblue', 
+            color='#364563', 
             linewidth=line_width, 
             linestyle=line_style, 
             drawstyle=draw_style,
             **(marker_style if marker_style is not None else {})
             )
 
-    ax.set_title(title, fontsize=16)
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_title(label=title)
+    ax.set_xlabel(xlabel=x_label)
+    ax.set_ylabel(ylabel=y_label)
+
+    # if labelticks is not None:
+    #     ax.set_xticks(labelticks)
+    # if labels is not None:
+    #     ax.set_xticklabels(labels)
 
     if show_grid:
         ax.grid(True)
@@ -529,8 +532,9 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     fig.autofmt_xdate(rotation=label_rotation)
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
+    return fig, ax
 
 
 
@@ -543,9 +547,6 @@ def plot_n_day_accumulations(
     """
     Plot n-day rolling accumulations for different windows.
     """
-
-    #set font family globally
-    plt.rcParams["font.family"] = "Roboto Condensed"
 
     fig, axs = plt.subplots(
         ncols=len(rolled_data_list),
@@ -587,8 +588,8 @@ def plot_n_day_accumulations(
         # Style
         ax.set_xticks(labelticks)
         ax.set_xticklabels(labels)
-        ax.grid(axis="x", color="k", alpha=0.2)
-        ax.set_title(f"{ndays}-day accumulated {parameter}")
+        ax.grid(axis="x", color="k", alpha=0.2) # set vertical grid lines
+        ax.set_title(f"{ndays}-day accumulated {parameter}", fontsize=18)
 
         # Highlight date window
         ylim = ax.get_ylim()

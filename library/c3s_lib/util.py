@@ -26,8 +26,7 @@ def select_region(regionType:str, params:Dict[str, Any]=None):
     #if params != None:
     #    url += urlencode(params)
     
-    # response = requests.get(url=url, params=params)
-    response = requests.post(url=url, data=params)
+    response = requests.post(url=url, json=params)
     
     poll_url = False
     
