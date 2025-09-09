@@ -20,12 +20,16 @@ import matplotlib.font_manager as fm
 import os
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import cmocean
+import matplotlib.image as mpimg
+from IPython.display import display, clear_output
 
 # set font directory
 BASE_DIR = os.path.dirname(__file__)
 font_path = os.path.join(BASE_DIR, "RobotoCondensed-Regular.ttf")
 roboto_condensed_regular = fm.FontProperties(fname=font_path)
 fm.fontManager.addfont(font_path)
+
+logo_horizon_path = os.path.join(BASE_DIR, "LogoLine_horizon_C3S.png")
 
 # set font family and settings globally
 plt.rcParams["font.family"] = roboto_condensed_regular.get_name()
@@ -51,6 +55,9 @@ precipitation_colors = ["#693f18", "#ffffff", "#204182"]
 # create colormap
 temperature_cmap = ListedColormap(temperature_colors, name="temperature_cmap")
 precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=11)
+
+def set_style(param:str, value:str|int|float):
+    plt.rcParams[param] = value
 
 def get_colormap(map:str): 
 
@@ -149,6 +156,48 @@ def visualize_geo(
     else:
         raise ValueError(f"Unknown backend '{backend}'. Choose 'matplotlib' or 'plotly'.")
 
+def add_image_below(fig, image_path,
+                    min_height_frac=0.06,
+                    max_height_frac=0.40,
+                    pad_frac=0.02,
+                    save_path="output_with_logo.png"
+):
+    """
+    Add an image below a figure, spanning full width and preserving aspect ratio.
+    The figure is updated in-place, shown in the notebook, and also saved to a PNG.
+    """
+    img = mpimg.imread(image_path)
+    img_h, img_w = img.shape[0:2]
+
+    fig_w, fig_h = fig.get_size_inches()
+    img_aspect = img_h / img_w
+    fig_aspect = fig_w / fig_h
+    true_height_frac = img_aspect * fig_aspect
+
+    # Clamp height
+    height = max(min_height_frac, min(max_height_frac, true_height_frac))
+
+    # Reposition existing axes upward
+    available_space = 1.0 - height - pad_frac
+    for ax in fig.get_axes():
+        left, bottom, width, h = ax.get_position().bounds
+        new_bottom = height + pad_frac + bottom * available_space
+        new_height = h * available_space
+        ax.set_position([left, new_bottom, width, new_height])
+
+    # Add logo axes
+    ax_img = fig.add_axes([0.1, 0.0, .8, height*.8])
+    ax_img.imshow(img, aspect="auto")
+    ax_img.axis("off")
+
+    # Save to file
+    #fig.savefig(save_path, bbox_inches="tight", dpi=fig.dpi)
+
+    clear_output(wait=True)
+    display(fig)
+
+    return fig, ax_img
+
 
 
 
@@ -157,8 +206,8 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
              gridlines:bool=True, title:str=None, legend:bool=True, legend_title:str=None,
              cmap:str=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]=None,
              projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-             dpi:int=100, marker:str='s'
-             ):
+             dpi:int=100, marker:str='s', add_logos:bool=True
+):
     
     # get colormap
     cmap = get_colormap(cmap if cmap else value_col)
@@ -220,7 +269,11 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     if extends is not None:
       ax.set_extent(extends, crs=projection)
 
-    return fig, ax
+    if add_logos:
+        plt.close(fig)
+        return add_image_below(fig, logo_horizon_path, pad_frac=-.7)
+    else:
+        return fig, ax
 
 
 
@@ -231,7 +284,7 @@ def subplot_gdf(
     coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
     projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
     dpi:int=100, flatten_empty_plots:bool=True, marker:str='s',
-    shared_colorbar:bool=True   # 👈 new parameter
+    shared_colorbar:bool=True, add_logos:bool=True
 ):
     
     # get colormap
@@ -325,13 +378,18 @@ def subplot_gdf(
     if subtitle:
         fig.suptitle(subtitle)
 
-    return fig, axes
+    if add_logos:
+        plt.close(fig)
+        return add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.1)
+    else:
+        return fig, axes
 
 
 
 
 
 def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.DataArray=None, projection:cartopy.crs=ccrs.PlateCarree()):
+    
     lons, lats = zip(*coords)
     min_lon = min(lons)
     max_lon = max(lons)
@@ -504,12 +562,15 @@ def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, 
 
 def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
                    fig_size:tuple=(12,6), dpi:int=100, show_grid:bool=True, line_style:str=':', marker_style:str=None, 
-                   draw_style:str='default', label_rotation:int=0, line_width:float=1.5, labelticks:list[str]=None, labels:list[str]=None):
+                   draw_style:str='default', label_rotation:int=0, line_width:float=1.5, labelticks:list[str]=None, labels:list[str]=None,
+                   add_logos:bool=True
+):
     
+    #set font family globally
     fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
 
     ax.plot(data[datetime_col], data[value_col], 
-            color='#364563', 
+            color='darkblue', 
             linewidth=line_width, 
             linestyle=line_style, 
             drawstyle=draw_style,
@@ -520,21 +581,25 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
     ax.set_xlabel(xlabel=x_label)
     ax.set_ylabel(ylabel=y_label)
 
-    # if labelticks is not None:
-    #     ax.set_xticks(labelticks)
-    # if labels is not None:
-    #     ax.set_xticklabels(labels)
+    if labelticks is not None:
+        ax.set_xticks(labelticks)
+    if labels is not None:
+        ax.set_xticklabels(labels)
 
     if show_grid:
         ax.grid(True)
 
     # Format x-axis with date labels
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    #ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     fig.autofmt_xdate(rotation=label_rotation)
 
     # plt.tight_layout()
     # plt.show()
-    return fig, ax
+    if add_logos:
+        plt.close(fig)
+        return add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.1)
+    else:
+        return fig, ax
 
 
 
@@ -542,7 +607,8 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
 
 def plot_n_day_accumulations(
     rolled_data_list:list[gpd.GeoDataFrame], value_col:str, parameter:str, event_date:datetime,
-    labelticks:list[int], labels:list[any], days:list[int], ylimit:int=None, datetime_col:str="valid_time"
+    labelticks:list[int], labels:list[any], days:list[int], ylimit:int=None, datetime_col:str="valid_time",
+    add_logos:bool=True
 ):
     """
     Plot n-day rolling accumulations for different windows.
@@ -600,4 +666,8 @@ def plot_n_day_accumulations(
         if ylimit is not None:
             ax.set_ylim(0, ylimit)
 
-    return fig, axs
+    if add_logos:
+        plt.close(fig)
+        return add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac= 0.1)
+    else:
+        return fig, ax
