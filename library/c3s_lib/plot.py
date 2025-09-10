@@ -18,7 +18,7 @@ from datetime import datetime
 import xarray as xr
 import matplotlib.font_manager as fm
 import os
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap, BoundaryNorm
 import cmocean
 import matplotlib.image as mpimg
 from IPython.display import display, clear_output
@@ -45,29 +45,43 @@ plt.rcParams["ytick.color"] = "#6a6a6b"         # 🔹 y-axis tick labels
 plt.rcParams["ytick.labelcolor"] = "#6a6a6b"
 plt.rcParams["ytick.labelsize"] = 13
 
-# set colormaps
+# set colormap color values
 temperature_colors = [
     "#204182", "#24569c", "#559bd4", "#95d0f0", "#cee9f5", "#f6fcfe",
     "#fff1ba", "#ffc656", "#f6862f", "#e8432a", "#b92027"
 ]
 precipitation_colors = ["#693f18", "#ffffff", "#204182"]
+anomaly_colors = ["#af1f29", "#ffffff", "#204282"]
 
-# create colormap
+# create colormap from colors
 temperature_cmap = ListedColormap(temperature_colors, name="temperature_cmap")
 precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=11)
+anomaly_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", anomaly_colors, N=11)
 
+# get colormap normalization
+def cmap_norm(vmin:int|float, vmax:int|float, steps:int):
+    boundaries = np.linspace(vmin, vmax, steps + 1)
+    return BoundaryNorm(boundaries, steps)
+
+# set global style paramaters
 def set_style(param:str, value:str|int|float):
     plt.rcParams[param] = value
 
+# get colormap
 def get_colormap(map:str): 
+
+    original_map = map
+    map = map.lower()
 
     match map:
         case 't2m':
             return temperature_cmap
         case 'tp':
             return precipitation_cmap
+        case 'anomaly' | 'sst':
+            return anomaly_cmap
         case _:
-            return map
+            return original_map
 
 def visualize_geo(
     df,
@@ -218,17 +232,17 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
         )   
 
     # set color map   
-    # vmin = -50
-    # vmax = 50   # this should be variable based on temp or preticipation
-    # temp_kwargs = {"cmap" : cmap, "vmin":vmin, "vmax":vmax}
-    temp_kwargs = {"cmap" : cmap}
+    vmin = gdf[value_col].min()
+    vmax = gdf[value_col].max()
+    norm = cmap_norm(vmin, vmax, 11)
+    colorbar_kwargs = {"cmap" : cmap, "norm": norm, "ticks": norm.boundries}
 
     # Set the colorbar properties
     legend_title = legend_title if legend_title else "legend"
 
     # Plot the GeoDataFrame
-    gdf.plot(ax = ax, **temp_kwargs,
-        legend=legend, legend_kwds={'label': legend_title},
+    gdf.plot(ax = ax, **colorbar_kwargs,
+        legend=legend, legend_kwds={'label': legend_title, "ticks": norm.boundaries},
         column = value_col, marker=marker
         )
 
@@ -271,7 +285,8 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
 
     if add_logos:
         plt.close(fig)
-        return add_image_below(fig, logo_horizon_path, pad_frac=-.7)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=0)
+        return fig, ax, img_ax
     else:
         return fig, ax
 
@@ -307,8 +322,8 @@ def subplot_gdf(
 
     # Shared color scale (only if shared_colorbar=True)
     if shared_colorbar:
-        vmin = math.floor(gdfs[value_col].min())
-        vmax = math.ceil(gdfs[value_col].max())
+        vmin = gdfs[value_col].min()
+        vmax = gdfs[value_col].max()
 
     for i, day in enumerate(unique_days):
         ax = axes[i]
@@ -316,8 +331,8 @@ def subplot_gdf(
 
         # Individual scale if not shared
         if not shared_colorbar:
-            vmin = math.floor(day_gdf[value_col].min())
-            vmax = math.ceil(day_gdf[value_col].max())
+            vmin = day_gdf[value_col].min()
+            vmax = day_gdf[value_col].max()
 
         # Plot
         day_gdf.plot(
@@ -332,9 +347,10 @@ def subplot_gdf(
 
         if not shared_colorbar:
             # Add colorbar per axis
-            sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+            norm = cmap_norm(vmin, vmax, 11)
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             sm._A = []
-            cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.04, pad=0.04)
+            cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.04, pad=0.04, ticks=norm.boundaries)
             cbar.set_label(legend_title)
 
         if gridlines:
@@ -368,10 +384,12 @@ def subplot_gdf(
 
     # Shared colorbar if requested
     if shared_colorbar:
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+        norm = cmap_norm(vmin, vmax, 11)
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm._A = []
-        cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=60)
+        cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=60, ticks=norm.boundaries)
         cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
+        # cbar.set_ticks(np.round(norm.boundaries).astype(int))
         plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=roboto_condensed_regular.get_name(), fontsize=13)
         plt.show()
     
@@ -380,7 +398,8 @@ def subplot_gdf(
 
     if add_logos:
         plt.close(fig)
-        return add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.1)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.1)
+        return fig, axes, img_ax
     else:
         return fig, axes
 
@@ -510,7 +529,10 @@ def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, 
                 clipped_poly = new_poly.intersection(poly)
 
                 if not clipped_poly.is_empty:
-                    adjusted_polygons.append(clipped_poly)
+                    if clipped_poly.geom_type == "Polygon":
+                        adjusted_polygons.append(clipped_poly)
+                    elif clipped_poly.geom_type == "MultiPolygon":
+                        adjusted_polygons.extend(list(clipped_poly.geoms))
 
     lons, lats = zip(*all_coords)
     min_lon = min(lons)
@@ -597,7 +619,8 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
     # plt.show()
     if add_logos:
         plt.close(fig)
-        return add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.1)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-.1)
+        return fig, ax, img_ax
     else:
         return fig, ax
 
@@ -608,7 +631,7 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
 def plot_n_day_accumulations(
     rolled_data_list:list[gpd.GeoDataFrame], value_col:str, parameter:str, event_date:datetime,
     labelticks:list[int], labels:list[any], days:list[int], ylimit:int=None, datetime_col:str="valid_time",
-    add_logos:bool=True
+    add_logos:bool=True, fig_height: int = 3, xtick_rotation: int = 0
 ):
     """
     Plot n-day rolling accumulations for different windows.
@@ -616,7 +639,7 @@ def plot_n_day_accumulations(
 
     fig, axs = plt.subplots(
         ncols=len(rolled_data_list),
-        figsize=(5 * len(rolled_data_list), 3),
+        figsize=(5 * len(rolled_data_list), fig_height),
         dpi=100,
         sharey=True
     )
@@ -653,7 +676,7 @@ def plot_n_day_accumulations(
 
         # Style
         ax.set_xticks(labelticks)
-        ax.set_xticklabels(labels)
+        ax.set_xticklabels(labels, rotation=xtick_rotation)
         ax.grid(axis="x", color="k", alpha=0.2) # set vertical grid lines
         ax.set_title(f"{ndays}-day accumulated {parameter}", fontsize=18)
 
@@ -668,6 +691,7 @@ def plot_n_day_accumulations(
 
     if add_logos:
         plt.close(fig)
-        return add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac= 0.1)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=0.1)
+        return fig, ax, img_ax
     else:
         return fig, ax
