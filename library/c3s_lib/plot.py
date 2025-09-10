@@ -235,7 +235,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     vmin = gdf[value_col].min()
     vmax = gdf[value_col].max()
     norm = cmap_norm(vmin, vmax, 11)
-    colorbar_kwargs = {"cmap" : cmap, "norm": norm, "ticks": norm.boundries}
+    colorbar_kwargs = {"cmap" : cmap, "norm": norm}
 
     # Set the colorbar properties
     legend_title = legend_title if legend_title else "legend"
