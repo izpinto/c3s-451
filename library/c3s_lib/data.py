@@ -98,6 +98,9 @@ class DataClient():
             df['tp'] = df['tp'] / 1000
         
         return df
+    
+
+
 
     def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
@@ -204,6 +207,30 @@ class DataClient():
         # Implementation will go here
         return self._convert_precipitation(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), from_unit, to_unit)
     
+    def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
+        
+        parameter = parameter.lower()
+
+        # Build kwargs only if explicitly set
+        unit_kwargs = {}
+        if from_unit is not None:
+            unit_kwargs["from_unit"] = from_unit
+        if to_unit is not None:
+            unit_kwargs["to_unit"] = to_unit
+
+        match parameter:
+            case 'tmean':
+                return self.temperature_2m_mean(bbox, time_range, **unit_kwargs)
+            case 'tmin':
+                return self.temperature_2m_min(bbox, time_range, **unit_kwargs)
+            case 'tmax':
+                return self.temperature_2m_max(bbox, time_range, **unit_kwargs)
+            case 'precipitation':
+                return self.total_precipitation(bbox, time_range, **unit_kwargs)
+            case _:
+                return ValueError(f"Unsupported parameter: {parameter}")
+
+
     
 class CDSClient():
     CDS_API_URL = "https://cds.climate.copernicus.eu/api"
