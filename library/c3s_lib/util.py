@@ -9,6 +9,7 @@ import cartopy.crs as ccrs
 import cmocean
 import base64
 from io import BytesIO
+from c3s_lib import plot
 
 
 # Select a region using the C3S-451 Region Picker service
@@ -100,12 +101,16 @@ def data_2_poly(data):
     
     return polygons, all_coords
 
-def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:int=100, cmap=cmocean.cm.thermal, projection=ccrs.PlateCarree(), show_fig:bool=False, marker:str='s'):
+def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:int=100, cmap=None, projection=ccrs.PlateCarree(), show_fig:bool=False, marker:str='s'):
+
 
     selected_gdf_anomoly = gdf[(gdf[datetime_col] >= date) & (gdf[datetime_col] <= date)]
 
     vmin = gdf[value_col].min()
     vmax = gdf[value_col].max()
+
+    cmap, norm = plot.get_colormap(cmap if cmap else value_col, vmin, vmax)
+
 
     fig, ax = plt.subplots(
         ncols = 1, nrows = 1, figsize = (5,5), dpi = dpi, 
@@ -114,7 +119,7 @@ def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:in
 
     # ax.plot(selected_gdf_anomoly['longitude'], selected_gdf_anomoly['latitude'], "o", markersize=1)  # markersize = diameter in points
 
-    temp_kwargs = {"cmap" : cmap}
+    temp_kwargs = {"cmap" : cmap, "norm": norm}
 
     selected_gdf_anomoly.plot(ax = ax, **temp_kwargs,
         column = value_col,

@@ -18,7 +18,7 @@ from datetime import datetime
 import xarray as xr
 import matplotlib.font_manager as fm
 import os
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap, BoundaryNorm, TwoSlopeNorm
 import cmocean
 import matplotlib.image as mpimg
 from IPython.display import display, clear_output
@@ -55,33 +55,41 @@ anomaly_colors = ["#af1f29", "#ffffff", "#204282"]
 
 # create colormap from colors
 temperature_cmap = ListedColormap(temperature_colors, name="temperature_cmap")
+temperature_positive_cmap = ListedColormap(temperature_colors[5:], name="temperature_cmap")
+temperature_negative_cmap = ListedColormap(temperature_colors[:6], name="temperature_cmap")
 precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=11)
 anomaly_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", anomaly_colors, N=11)
 
 # get colormap normalization
-def cmap_norm(vmin:int|float, vmax:int|float, steps:int):
+def cmap_norm_boundary(vmin:int|float, vmax:int|float, steps:int):
     boundaries = np.linspace(vmin, vmax, steps + 1)
     return BoundaryNorm(boundaries, steps)
+
+def cmap_norm_twoslope(vmin, vmax, center):
+    print(vmin, center, vmax)
+    return TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
 # set global style paramaters
 def set_style(param:str, value:str|int|float):
     plt.rcParams[param] = value
 
 # get colormap
-def get_colormap(map:str): 
+def get_colormap(map:str, vmin, vmax): 
 
     original_map = map
     map = map.lower()
 
     match map:
         case 't2m':
-            return temperature_cmap
+            cmap = temperature_positive_cmap if vmin >= 0 else temperature_negative_cmap if vmax <= 0 else temperature_cmap
+            norm = cmap_norm_boundary(vmin, vmax, 6) if vmin >= 0 else cmap_norm_boundary(vmin, vmax, 6) if vmax <= 0 else cmap_norm_boundary(-max(abs(vmin), abs(vmax)), max(abs(vmin), abs(vmax)), 11)
+            return cmap, norm
         case 'tp':
-            return precipitation_cmap
+            return precipitation_cmap, cmap_norm_boundary(0, vmax, 11)
         case 'anomaly' | 'sst':
-            return anomaly_cmap
+            return anomaly_cmap, cmap_norm_boundary(vmin, vmax, 11)
         case _:
-            return original_map
+            return original_map, cmap_norm_boundary(vmin, vmax, 11)
 
 def visualize_geo(
     df,
@@ -224,7 +232,6 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
 ):
     
     # get colormap
-    cmap = get_colormap(cmap if cmap else value_col)
 
     fig, ax = plt.subplots(
         ncols = 1, nrows = 1, figsize = fig_size, dpi = dpi, 
@@ -234,7 +241,9 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     # set color map   
     vmin = gdf[value_col].min()
     vmax = gdf[value_col].max()
-    norm = cmap_norm(vmin, vmax, 11)
+    cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
+
+    #norm = cmap_norm_boundary(vmin, vmax, 11)
     colorbar_kwargs = {"cmap" : cmap, "norm": norm}
 
     # Set the colorbar properties
@@ -303,7 +312,7 @@ def subplot_gdf(
 ):
     
     # get colormap
-    cmap = get_colormap(cmap if cmap else value_col)
+    #cmap = get_colormap(cmap if cmap else value_col)
 
     # Ensure datetime column is datetime type
     gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
@@ -324,6 +333,8 @@ def subplot_gdf(
     if shared_colorbar:
         vmin = gdfs[value_col].min()
         vmax = gdfs[value_col].max()
+        cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
+
 
     for i, day in enumerate(unique_days):
         ax = axes[i]
@@ -333,6 +344,7 @@ def subplot_gdf(
         if not shared_colorbar:
             vmin = day_gdf[value_col].min()
             vmax = day_gdf[value_col].max()
+            cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
 
         # Plot
         day_gdf.plot(
@@ -343,11 +355,12 @@ def subplot_gdf(
             vmin=vmin,
             vmax=vmax,
             marker=marker,
+            norm=norm
         )
 
         if not shared_colorbar:
             # Add colorbar per axis
-            norm = cmap_norm(vmin, vmax, 11)
+            #norm = cmap_norm_boundary(vmin, vmax, 11)
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             sm._A = []
             cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.04, pad=0.04, ticks=norm.boundaries)
@@ -384,7 +397,7 @@ def subplot_gdf(
 
     # Shared colorbar if requested
     if shared_colorbar:
-        norm = cmap_norm(vmin, vmax, 11)
+        #norm = cmap_norm_boundary(vmin, vmax, 11)
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm._A = []
         cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=60, ticks=norm.boundaries)
@@ -428,6 +441,7 @@ def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.Dat
     ax.add_feature(cfeature.COASTLINE)
     ax.add_feature(cfeature.LAND, edgecolor='black')
     ax.gridlines(draw_labels=True)  
+    
 
     # Set colorbar to 1:4 to keep water blue and land green
     cax = inset_axes(
@@ -443,7 +457,6 @@ def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.Dat
             ax=ax,
             transform=projection,
             cmap="terrain",
-            vmin=-250, vmax= 1000,
             cbar_ax=cax,
             cbar_kwargs={"label": "Elevation (m)"},
             add_colorbar=True,
@@ -483,7 +496,9 @@ def plot_geometry(geom, ax, color:str='green', alpha:float=0.3, projection:carto
 
 
 
-def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, threshold:int, projection:cartopy.crs=ccrs.PlateCarree()):
+def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, threshold:int=None, projection:cartopy.crs=ccrs.PlateCarree()):
+
+    threshold = threshold if threshold else 100000
 
     all_coords = []
     adjusted_polygons = []
@@ -631,18 +646,25 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
 def plot_n_day_accumulations(
     rolled_data_list:list[gpd.GeoDataFrame], value_col:str, parameter:str, event_date:datetime,
     labelticks:list[int], labels:list[any], days:list[int], ylimit:int=None, datetime_col:str="valid_time",
-    add_logos:bool=True, fig_height: int = 3, xtick_rotation: int = 0
+    add_logos:bool=True, fig_height: int = 3, xtick_rotation: int = 0, ncols:int=0
 ):
     """
     Plot n-day rolling accumulations for different windows.
     """
 
+    # fig size
+    nplots = len(rolled_data_list)
+    ncols = ncols if ncols else nplots
+    nrows = math.ceil(nplots/ncols)
+
     fig, axs = plt.subplots(
-        ncols=len(rolled_data_list),
-        figsize=(5 * len(rolled_data_list), fig_height),
+        ncols=ncols,
+        nrows=nrows,
+        figsize=(5 * ncols, fig_height * nrows),
         dpi=100,
         sharey=True
     )
+    axs = np.array(axs).reshape(-1)
 
     if len(rolled_data_list) == 1:
         axs = [axs]  # make iterable if only one axis
@@ -689,9 +711,15 @@ def plot_n_day_accumulations(
         if ylimit is not None:
             ax.set_ylim(0, ylimit)
 
+    fig.subplots_adjust(hspace=0.4)
+
+    for ax in axs[nplots:]:
+        fig.delaxes(ax)
+    axs = axs[:nplots]
+
     if add_logos:
         plt.close(fig)
-        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=0.1)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=0)
         return fig, ax, img_ax
     else:
         return fig, ax
