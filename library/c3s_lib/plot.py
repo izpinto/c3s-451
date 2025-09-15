@@ -723,3 +723,4 @@ def plot_n_day_accumulations(
         return fig, ax, img_ax
     else:
         return fig, ax
+    

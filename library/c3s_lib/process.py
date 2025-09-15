@@ -3,7 +3,7 @@ import pandas as pd
 import geopandas as gpd
 from typing import Union, Literal
 import numpy as np
-
+from .util import *
 
 
 # Don't use
@@ -242,7 +242,7 @@ def n_day_accumulations_gdf(
 
 
 
-def sliding_stat_by_dayofyear(gdf, value_col:str, padding:int=15, datetime_col:str="valid_time"):
+def calculate_climatology(gdf, value_col:str, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
     """
     Parameters:
     -----------
@@ -253,6 +253,9 @@ def sliding_stat_by_dayofyear(gdf, value_col:str, padding:int=15, datetime_col:s
     Returns:
     --------
     """
+
+    gdf = gdf.copy()
+
     # Ensure 'time' column is datetime
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
 
@@ -288,4 +291,42 @@ def sliding_stat_by_dayofyear(gdf, value_col:str, padding:int=15, datetime_col:s
         result_list.append(daily_mean)
         doy_mean_gdf = pd.concat(result_list, ignore_index=True)
 
-    return doy_mean_gdf
+    # Turn dataframe back into a gpd
+    return_gdf = gpd.GeoDataFrame(doy_mean_gdf, geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), crs=gdf.crs)
+
+    # turn doy (day of year) column back into datetime column
+    return_gdf[datetime_col] = pd.to_datetime('2024', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
+
+    return return_gdf
+
+
+
+# apply a weight to each value based on latitude
+def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude', out_col:str|None=None) -> gpd.GeoDataFrame:
+
+    if out_col is None:
+        out_col = f"{value_col}_weighted"
+    
+    gdf = gdf.copy()
+    weights = np.cos(np.radians(gdf[lat_col]))
+    gdf[out_col] = gdf[value_col] * weights
+    gdf["_weight"] = weights
+
+    return gdf
+
+
+
+def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, group_col:str, weight_col:str|None=None) -> gpd.GeoDataFrame:
+
+    gdf = gdf.copy()
+
+    if weight_col is None:
+        gdf = gdf.groupby(group_col)[value_col].mean().reset_index()
+    else:
+        gdf = (
+            gdf.groupby(group_col)
+            .apply(lambda x: x[value_col].sum() / x[weight_col].sum())
+            .reset_index(name=value_col)
+        )
+
+    return gdf

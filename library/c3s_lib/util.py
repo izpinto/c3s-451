@@ -9,7 +9,7 @@ import cartopy.crs as ccrs
 import cmocean
 import base64
 from io import BytesIO
-from c3s_lib import plot
+from .plot import *
 
 
 # Select a region using the C3S-451 Region Picker service
@@ -101,6 +101,9 @@ def data_2_poly(data):
     
     return polygons, all_coords
 
+
+# Creates only the figure overlay of the ploted data without axis, legend, etc
+# Used for sending the overlay to the region picker
 def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:int=100, cmap=None, projection=ccrs.PlateCarree(), show_fig:bool=False, marker:str='s'):
 
 
@@ -109,7 +112,7 @@ def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:in
     vmin = gdf[value_col].min()
     vmax = gdf[value_col].max()
 
-    cmap, norm = plot.get_colormap(cmap if cmap else value_col, vmin, vmax)
+    cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
 
 
     fig, ax = plt.subplots(
@@ -143,3 +146,74 @@ def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:in
     buf.close()
 
     return img_base64
+
+
+# Adds a column specifying the day of the year
+def add_doy_column(gdf, datetime_col:str, doy_col:str='moy') -> gpd.GeoDataFrame:   
+    gdf = gdf.copy()
+
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    gdf[doy_col] = gdf[datetime_col].dt.day
+
+    return gdf
+
+# Adds a column specifying the month of the year
+def add_month_column(gdf, datetime_col:str, month_col:str='month') -> gpd.GeoDataFrame:   
+    gdf = gdf.copy()
+
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    gdf[month_col] = gdf[datetime_col].dt.month
+
+    return gdf
+
+# Adds a columns specifying the year
+def add_year_column(gdf, datetime_col:str, year_col:str='year') -> gpd.GeoDataFrame:  
+    gdf = gdf.copy()
+
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    gdf[year_col] = gdf[datetime_col].dt.year
+
+    return gdf
+
+# Cutout the study region by geometry
+def select_study_region_gdf(gdf:gpd.GeoDataFrame, study_region:gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    return gpd.overlay(gdf, study_region, how='intersection')
+
+# Select a date range
+def select_date_range_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, time_range:tuple[datetime, datetime]) -> gpd.GeoDataFrame:
+    return gdf[(gdf[datetime_col] >= time_range[0]) & (gdf[datetime_col] <= time_range[1])]
+
+# Select months
+def select_month_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, month_range:tuple[int, int]) -> gpd.GeoDataFrame:
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    months = gdf[datetime_col].dt.month
+    return gdf[(months >= month_range[0]) & (months <= month_range[1])]
+
+# Select days
+def select_doy_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, doy_range:tuple[int, int]) -> gpd.GeoDataFrame:
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    doys = gdf[datetime_col].dt.dayofyear
+    return gdf[(doys >= doy_range[0]) & (doys <= doy_range[1])]
+
+# Create a subset of the gdf
+def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
+               date_range:tuple[datetime, datetime]|None=None,
+               month_range:tuple[int, int]|None=None,
+               doy_range:tuple[int, int]|None=None,
+               study_region:gpd.GeoDataFrame|None=None
+               ) -> gpd.GeoDataFrame:
+    
+    gdf = gdf.copy()
+
+    if datetime_col is not None:
+        if date_range is not None:
+            gdf = select_date_range_gdf(gdf, datetime_col=datetime_col, time_range=date_range)
+        if month_range is not None:
+            gdf = select_month_gdf(gdf, datetime_col=datetime_col, month_range=month_range)
+        if doy_range is not None:
+            gdf = select_doy_gdf(gdf, datetime_col=datetime_col, doy_range=doy_range)
+
+    if study_region is not None:
+        gdf = select_study_region_gdf(gdf, study_region)
+    
+    return gdf
