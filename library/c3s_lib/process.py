@@ -148,7 +148,7 @@ def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDa
 
 
 
-def n_day_accumulations_gdf(
+def calculate_running_mean(
     gdf: Union[pd.DataFrame, gpd.GeoDataFrame],
     value_col: str,
     padding: int,
@@ -316,17 +316,26 @@ def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude',
 
 
 
-def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, group_col:str, weight_col:str|None=None) -> gpd.GeoDataFrame:
+def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, groupby_col:str, weight_col:str|None=None) -> gpd.GeoDataFrame:
 
     gdf = gdf.copy()
 
     if weight_col is None:
-        gdf = gdf.groupby(group_col)[value_col].mean().reset_index()
+        gdf = gdf.groupby(groupby_col)[value_col].mean().reset_index()
     else:
         gdf = (
-            gdf.groupby(group_col)
+            gdf.groupby(groupby_col)
             .apply(lambda x: x[value_col].sum() / x[weight_col].sum())
             .reset_index(name=value_col)
         )
 
     return gdf
+
+def calculate_max(gdf: gpd.GeoDataFrame, value_col: str, groupby_col: str) -> gpd.GeoDataFrame:
+    
+    return gdf.groupby(groupby_col)[value_col].max().reset_index()
+
+
+def calculate_min(gdf: gpd.GeoDataFrame, value_col: str, groupby_col: str) -> gpd.GeoDataFrame:
+    
+    return gdf.groupby(groupby_col)[value_col].min().reset_index()

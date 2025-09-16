@@ -55,8 +55,8 @@ anomaly_colors = ["#af1f29", "#ffffff", "#204282"]
 
 # create colormap from colors
 temperature_cmap = ListedColormap(temperature_colors, name="temperature_cmap")
-temperature_positive_cmap = ListedColormap(temperature_colors[5:], name="temperature_cmap")
-temperature_negative_cmap = ListedColormap(temperature_colors[:6], name="temperature_cmap")
+temperature_positive_cmap = ListedColormap(temperature_colors[5:], name="temperature_positive_cmap")
+temperature_negative_cmap = ListedColormap(temperature_colors[:6], name="temperature_negative_cmap")
 precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=11)
 anomaly_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", anomaly_colors, N=11)
 
@@ -77,7 +77,6 @@ def set_style(param:str, value:str|int|float):
 def get_colormap(map:str, vmin, vmax): 
 
     original_map = map
-    map = map.lower()
 
     match map:
         case 't2m':
