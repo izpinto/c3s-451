@@ -224,11 +224,10 @@ def add_image_below(fig, image_path,
 
 # plots a single plot of a GeoDataFrame
 def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:bool=True,
-             gridlines:bool=True, title:str=None, legend:bool=True, legend_title:str=None,
-             cmap:str=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]=None,
-             projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-             dpi:int=100, marker:str='s', add_logos:bool=True
-):
+             gridlines:bool=True, title:str|None=None, legend:bool=True, legend_title:str|None=None,
+             cmap:str|None=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]|None=None,
+             projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]|None=None,
+             dpi:int=100, marker:str='s', add_logos:bool=True, polygon_color='cyan'):
     
     # get colormap
 
@@ -242,17 +241,14 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     vmax = gdf[value_col].max()
     cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
 
-    #norm = cmap_norm_boundary(vmin, vmax, 11)
-    colorbar_kwargs = {"cmap" : cmap, "norm": norm}
-
     # Set the colorbar properties
     legend_title = legend_title if legend_title else "legend"
 
     # Plot the GeoDataFrame
-    gdf.plot(ax = ax, **colorbar_kwargs,
-        legend=legend, legend_kwds={'label': legend_title, "ticks": norm.boundaries},
-        column = value_col, marker=marker
-        )
+    gdf.plot(ax = ax, cmap=cmap, legend=legend,
+            legend_kwds={'label': legend_title, "ticks": norm.boundaries, "norm": norm},
+            column = value_col, marker=marker
+            )
 
     # Add contextily basemap
     if gridlines:
@@ -277,7 +273,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     if polygons is not None:
         for poly in polygons:
             x, y = poly.exterior.xy
-            ax.plot(x, y, color='red', linewidth=2, transform=projection)
+            ax.plot(x, y, color=polygon_color, linewidth=2, transform=projection)
 
     if title is not None:
         ax.set_title(title,
@@ -299,7 +295,9 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
         return fig, ax
 
 
-
+# adjust this so:
+## shared colorbar is title + legend_title
+## individual colorbars have legend_title and complete fig has title
 def subplot_gdf(
     gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
     polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
@@ -307,7 +305,7 @@ def subplot_gdf(
     coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
     projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
     dpi:int=100, flatten_empty_plots:bool=True, marker:str='s',
-    shared_colorbar:bool=True, add_logos:bool=True
+    shared_colorbar:bool=True, add_logos:bool=True, polygon_color='cyan'
 ):
     
     # get colormap
@@ -381,7 +379,7 @@ def subplot_gdf(
         if polygons is not None:
             for poly in polygons:
                 x, y = poly.exterior.xy
-                ax.plot(x, y, color='red', linewidth=2, transform=projection)
+                ax.plot(x, y, color=polygon_color, linewidth=2, transform=projection)
 
         ax.set_title(f"{day}", fontsize=18, weight='medium')
 

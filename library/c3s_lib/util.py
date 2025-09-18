@@ -183,6 +183,12 @@ def select_study_region_gdf(gdf:gpd.GeoDataFrame, study_region:gpd.GeoDataFrame)
 def select_date_range_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, time_range:tuple[datetime, datetime]) -> gpd.GeoDataFrame:
     return gdf[(gdf[datetime_col] >= time_range[0]) & (gdf[datetime_col] <= time_range[1])]
 
+# Select years
+def select_year_gdf(gdf: gpd.GeoDataFrame, datetime_col: str, year_range: tuple[int, int]) -> gpd.GeoDataFrame:
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    years = gdf[datetime_col].dt.year
+    return gdf[(years >= year_range[0]) & (years <= year_range[1])]
+
 # Select months
 def select_month_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, month_range:tuple[int, int]) -> gpd.GeoDataFrame:
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
@@ -198,6 +204,7 @@ def select_doy_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, doy_range:tuple[int, 
 # Create a subset of the gdf
 def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
                date_range:tuple[datetime, datetime]|None=None,
+               year_range:tuple[int, int]|None=None,
                month_range:tuple[int, int]|None=None,
                doy_range:tuple[int, int]|None=None,
                study_region:gpd.GeoDataFrame|None=None
@@ -208,6 +215,8 @@ def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
     if datetime_col is not None:
         if date_range is not None:
             gdf = select_date_range_gdf(gdf, datetime_col=datetime_col, time_range=date_range)
+        if year_range is not None:
+            gdf = select_year_gdf(gdf, datetime_col=datetime_col, year_range=year_range)
         if month_range is not None:
             gdf = select_month_gdf(gdf, datetime_col=datetime_col, month_range=month_range)
         if doy_range is not None:
@@ -216,4 +225,13 @@ def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
     if study_region is not None:
         gdf = select_study_region_gdf(gdf, study_region)
     
+    return gdf
+
+def shift_datetime_by_months(gdf:gpd.GeoDataFrame, datetime_col:str, shift_by:int) -> gpd.GeoDataFrame:
+    
+    gdf = gdf.copy()
+
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    gdf[datetime_col] = gdf[datetime_col] - pd.DateOffset(months=shift_by)
+
     return gdf

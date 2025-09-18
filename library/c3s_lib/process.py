@@ -187,6 +187,9 @@ def calculate_running_mean(
         Same as input, with rolled values in `value_col`.
     """
 
+    if padding <= 1:
+        return gdf
+
     gdf = gdf.copy()
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
 
@@ -302,10 +305,9 @@ def calculate_climatology(gdf, value_col:str, padding:int=15, datetime_col:str="
 
 
 # apply a weight to each value based on latitude
-def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude', out_col:str|None=None) -> gpd.GeoDataFrame:
+def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude') -> gpd.GeoDataFrame:
 
-    if out_col is None:
-        out_col = f"{value_col}_weighted"
+    out_col = f"{value_col}_weighted"
     
     gdf = gdf.copy()
     weights = np.cos(np.radians(gdf[lat_col]))
@@ -315,27 +317,80 @@ def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude',
     return gdf
 
 
+def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, groupby_col:str) -> gpd.GeoDataFrame:
 
-def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, groupby_col:str, weight_col:str|None=None) -> gpd.GeoDataFrame:
+    is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
 
-    gdf = gdf.copy()
+    if is_spatial:
+        crs = gdf.crs
 
-    if weight_col is None:
-        gdf = gdf.groupby(groupby_col)[value_col].mean().reset_index()
-    else:
+    if '_weight' in gdf.columns:
         gdf = (
             gdf.groupby(groupby_col)
-            .apply(lambda x: x[value_col].sum() / x[weight_col].sum())
+            .apply(lambda x: x[f"{value_col}_weighted"].sum() / x["_weight"].sum())
             .reset_index(name=value_col)
         )
+    else:
+        gdf = gdf.groupby(groupby_col)[value_col].mean().reset_index()
+
+    if is_spatial:
+        gdf = gpd.GeoDataFrame(gdf,geometry=gpd.points_from_xy(gdf.longitude, gdf.latitude), crs=crs)
 
     return gdf
 
-def calculate_max(gdf: gpd.GeoDataFrame, value_col: str, groupby_col: str) -> gpd.GeoDataFrame:
+def calculate_max(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str, groupby_col:str) -> gpd.GeoDataFrame:
     
-    return gdf.groupby(groupby_col)[value_col].max().reset_index()
+    return (
+        gdf.loc[gdf.groupby(groupby_col)[value_col].idxmax(), [groupby_col, datetime_col, value_col]]
+        .reset_index(drop=True)
+    )
 
 
-def calculate_min(gdf: gpd.GeoDataFrame, value_col: str, groupby_col: str) -> gpd.GeoDataFrame:
+def calculate_min(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str, groupby_col:str) -> gpd.GeoDataFrame:
     
-    return gdf.groupby(groupby_col)[value_col].min().reset_index()
+    return (
+        gdf.loc[gdf.groupby(groupby_col)[value_col].idxmin(), [groupby_col, datetime_col, value_col]]
+        .reset_index(drop=True)
+    )
+
+def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str,
+                           yearly_value:str, month_range:tuple[int, int]|None=None,
+                           padding:int=0) -> gpd.GeoDataFrame:
+
+    # if month_range is present select a subset of the gdf
+    if month_range is not None:
+        start_date = pd.Timestamp(year=2001, month=month_range[0], day=1)
+        end_date = pd.Timestamp(year=2001, month=month_range[1], day=1) + pd.offsets.MonthEnd(1)
+
+        # if padding is > 1 add padding to subset
+        if padding > 1:
+        
+            start_date = start_date - pd.Timedelta(days=padding)
+            end_date = end_date + pd.Timedelta(days=padding)
+
+        start_doy = start_date.timetuple().tm_yday
+        end_doy = end_date.timetuple().tm_yday
+
+        # subset the gdf
+        gdf = subset_gdf(gdf=gdf, datetime_col=datetime_col, doy_range=(start_doy, end_doy))
+    
+    # calculate running mean. if padding == 1 gdf gets automatically returned
+    rolled_gdf = calculate_running_mean(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
+                                        padding=padding, centering=True)
+    
+    # subset the gdf to remove potential padding
+    if month_range is not None:
+        rolled_gdf = subset_gdf(gdf=rolled_gdf, datetime_col=datetime_col, month_range=month_range)
+    
+    # add years to the gdf to calculate yearly values
+    rolled_gdf = add_year_column(gdf=rolled_gdf, datetime_col=datetime_col)
+
+    match yearly_value:
+        case 'mean':
+            return calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')
+        case 'max':
+            return calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year')
+        case 'min':
+            return calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year')
+        case _:
+            raise ValueError("calcation must be 'subtract' or 'divide'")
