@@ -13,8 +13,20 @@ from .plot import *
 
 
 # Select a region using the C3S-451 Region Picker service
-def select_region(regionType:str, params:Dict[str, Any]=None):
+def select_region(regionType:str, bbox:tuple[float, float, float, float]|None=None,
+                  overlays:dict[str, str]|None=None, params:Dict[str, Any]=None):
     
+    params = params if params else {}
+
+    # add a bbox
+    if bbox is not None:
+        params["bbox"] = ",".join(map(str, bbox))
+
+    if overlays is not None and len(overlays) > 0:
+        params["images"] = {}
+        for key, value in overlays.items():
+            params["images"][key] = f'data:image/png;base64,{value}'
+
     allowed_region_types = ['wraf', 'hydrobasin']
     
     if regionType not in allowed_region_types:
