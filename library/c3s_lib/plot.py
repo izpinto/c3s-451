@@ -227,14 +227,17 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
              gridlines:bool=True, title:str|None=None, legend:bool=True, legend_title:str|None=None,
              cmap:str|None=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]|None=None,
              projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]|None=None,
-             dpi:int=100, marker:str='s', add_logos:bool=True, polygon_color='cyan'):
+             dpi:int=100, marker:str='s', add_logos:bool=True, polygon_color='cyan', ax=None):
     
     # get colormap
 
-    fig, ax = plt.subplots(
-        ncols = 1, nrows = 1, figsize = fig_size, dpi = dpi, 
-        subplot_kw = {"projection" : projection}
-        )   
+    if ax is None:
+        fig, ax = plt.subplots(
+            ncols = 1, nrows = 1, figsize = fig_size, dpi = dpi, 
+            subplot_kw = {"projection" : projection}
+            )
+    else:
+        fig = ax.figure
 
     # set color map   
     vmin = gdf[value_col].min()
@@ -245,29 +248,23 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     legend_title = legend_title if legend_title else "legend"
 
     # Plot the GeoDataFrame
-    gdf.plot(ax = ax, cmap=cmap, legend=legend,
-            legend_kwds={'label': legend_title, "ticks": norm.boundaries, "norm": norm},
+    gdf.plot(ax = ax, cmap=cmap, norm=norm, legend=legend,
+            legend_kwds={'label': legend_title,
+                         "ticks": norm.boundaries if hasattr(norm, "boundaries") else None,
+                         "norm": norm,
+                         "shrink": 0.9},
             column = value_col, marker=marker
             )
 
     # Add contextily basemap
     if gridlines:
-        ax.gridlines(
-            crs=projection, 
-            linewidth=0.5, color='black', 
-            draw_labels=["bottom", "left"], alpha=0.2
-        )
-
+        ax.gridlines(crs=projection, linewidth=0.5, color='black', draw_labels=["bottom", "left"], alpha=0.2)
     # Add coastlines
     if coastlines:
         ax.coastlines()
-
     # Add contextily basemap
     if borders:
-        ax.add_feature(
-            cartopy.feature.BORDERS, 
-            lw = 1, alpha = 0.7, ls = "--", zorder = 99
-        )
+        ax.add_feature(cartopy.feature.BORDERS, lw = 1, alpha = 0.7, ls = "--", zorder = 99)
 
     # Draw polygons if provided
     if polygons is not None:
@@ -276,12 +273,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
             ax.plot(x, y, color=polygon_color, linewidth=2, transform=projection)
 
     if title is not None:
-        ax.set_title(title,
-                     fontdict={
-                        'fontsize': 27,
-                        'fontweight': 'bold',
-                        # 'color': '#364563'
-                     })
+        ax.set_title(title, fontdict={'fontsize': 27, 'fontweight': 'bold'})
 
     # Set extent if provided
     if extends is not None:
@@ -597,8 +589,7 @@ def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, 
 def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
                    fig_size:tuple=(12,6), dpi:int=100, show_grid:bool=True, line_style:str=':', marker_style:str=None, 
                    draw_style:str='default', label_rotation:int=0, line_width:float=1.5, labelticks:list[str]=None, labels:list[str]=None,
-                   add_logos:bool=True
-):
+                   add_logos:bool=True, center_month_labels:bool=False, full_month_names:bool=False):
     
     #set font family globally
     fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
@@ -619,6 +610,12 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
         ax.set_xticks(labelticks)
     if labels is not None:
         ax.set_xticklabels(labels)
+
+    # Center month labels
+    if center_month_labels:
+        ax.xaxis.set_major_locator(mdates.MonthLocator(bymonthday=15))
+        fmt = "%B" if full_month_names else "%b"
+        ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt))
 
     if show_grid:
         ax.grid(True)
