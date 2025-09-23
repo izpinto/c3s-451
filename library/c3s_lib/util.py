@@ -239,11 +239,22 @@ def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
     
     return gdf
 
-def shift_datetime_by_months(gdf:gpd.GeoDataFrame, datetime_col:str, shift_by:int) -> gpd.GeoDataFrame:
+def shift_datetime_by_months(gdf:gpd.GeoDataFrame, datetime_col:str, shift_by:int, direction:str='forward') -> gpd.GeoDataFrame:
     
+    direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
+
     gdf = gdf.copy()
 
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-    gdf[datetime_col] = gdf[datetime_col] - pd.DateOffset(months=shift_by)
+    gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * direction
 
     return gdf
+
+def get_value_col(parameter:str):
+    match(parameter):
+        case 'Tmean' | 'Tmin' | 'Tmax':
+            return 't2m'
+        case 'Precipitation':
+            return 'pt'
+        case _:
+            raise ValueError(f"Unsupported parameter: {parameter}")

@@ -637,10 +637,10 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
 
 
 
-def plot_n_day_accumulations(
+def plot_n_days(
     rolled_data_list:list[gpd.GeoDataFrame], value_col:str, parameter:str, event_date:datetime,
-    labelticks:list[int], labels:list[any], days:list[int], ylimit:int=None, datetime_col:str="valid_time",
-    add_logos:bool=True, fig_height: int = 3, xtick_rotation: int = 0, ncols:int=0
+    labelticks:list[int], labels:list[any], days:list[int], title:str, ylimit:int=None,
+    datetime_col:str="valid_time", add_logos:bool=True, fig_height:int=3, xtick_rotation:int=0, ncols:int=0
 ):
     """
     Plot n-day rolling accumulations for different windows.
@@ -694,7 +694,7 @@ def plot_n_day_accumulations(
         ax.set_xticks(labelticks)
         ax.set_xticklabels(labels, rotation=xtick_rotation)
         ax.grid(axis="x", color="k", alpha=0.2) # set vertical grid lines
-        ax.set_title(f"{ndays}-day accumulated {parameter}", fontsize=18)
+        ax.set_title(f"{ndays}-day {title}", fontsize=18)
 
         # Highlight date window
         ylim = ax.get_ylim()

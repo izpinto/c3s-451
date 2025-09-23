@@ -148,7 +148,7 @@ def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDa
 
 
 
-def calculate_running_mean(
+def calculate_rolling_n_days(
     gdf: Union[pd.DataFrame, gpd.GeoDataFrame],
     value_col: str,
     padding: int,
@@ -245,7 +245,7 @@ def calculate_running_mean(
 
 
 
-def calculate_climatology(gdf, value_col:str, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
+def calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
     """
     Parameters:
     -----------
@@ -298,7 +298,9 @@ def calculate_climatology(gdf, value_col:str, padding:int=15, datetime_col:str="
     return_gdf = gpd.GeoDataFrame(doy_mean_gdf, geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), crs=gdf.crs)
 
     # turn doy (day of year) column back into datetime column
-    return_gdf[datetime_col] = pd.to_datetime('2024', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
+    return_gdf[datetime_col] = pd.to_datetime(f'{event_date.year}', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
+    #return_gdf["valid_time"] = pd.to_datetime(return_gdf["doy"], format="%j").dt.strftime("%m-%d")
+
 
     return return_gdf
 
@@ -375,7 +377,7 @@ def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str
         gdf = subset_gdf(gdf=gdf, datetime_col=datetime_col, doy_range=(start_doy, end_doy))
     
     # calculate running mean. if padding == 1 gdf gets automatically returned
-    rolled_gdf = calculate_running_mean(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
+    rolled_gdf = calculate_rolling_n_days(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
                                         padding=padding, centering=True)
     
     # subset the gdf to remove potential padding
