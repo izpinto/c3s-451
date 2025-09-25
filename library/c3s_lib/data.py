@@ -227,24 +227,24 @@ class DataClient():
                     gdfs.append(gdf)
                 if min_valid_time == None or max_valid_time == None:
                     print("No valid data found in beacon cache, fetching from CDS...")
-                    gdfs.append(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"))
+                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"))
                 else:
                     print(f"Beacon cache covers time range: {min_valid_time} - {max_valid_time}")
                     if min_valid_time > time_range[0]:
                         # Request missing data from CDS
                         print(f"Requesting missing data from CDS for range: {time_range[0]} - {min_valid_time}")
-                        gdfs.append(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_sum"))
+                        gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_sum"))
                     if max_valid_time < time_range[1]:
                         # Request missing data from CDS
                         print(f"Requesting missing data from CDS for range: {max_valid_time} - {time_range[1]}")
-                        gdfs.append(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_sum"))
+                        gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_sum"))
         
             # Concatenate all GeoDataFrames
             final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
             return self._convert_precipitation(final_gdf, from_unit, to_unit)
         
         print("Fetching data from CDS...")
-        return self._convert_precipitation(self.cds_client._fetch_data("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), from_unit, to_unit)
+        return self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), from_unit, to_unit)
     
     def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
         
