@@ -112,6 +112,7 @@ class DataClient():
         """
         # Implementation will go here
         df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_minimum"), from_unit, to_unit)
+        df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_minimum"), from_unit, to_unit)
 
         return df
 
@@ -128,8 +129,15 @@ class DataClient():
         """
         # Implementation will go here
         df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_maximum"), from_unit, to_unit)
+        df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_maximum"), from_unit, to_unit)
 
         return df
+    
+    def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+        return self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['mean_sea_level_pressure'], bbox, time_range, daily_statistic="daily_mean")
+
+    def z500_geopotential_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+        return self.cds_client._fetch_data_pressure_levels("derived-era5-pressure-levels-daily-statistics", ['geopotential'], bbox, time_range, levels=[500], daily_statistic="daily_mean")
     
     def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
         return self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['mean_sea_level_pressure'], bbox, time_range, daily_statistic="daily_mean")
@@ -161,6 +169,7 @@ class DataClient():
             for beacon_bbox in beacon_bboxes:
                 print("Beacon Bbox: "+  str(beacon_bbox))
                 gdf = self.beacon_cache._fetch_temperature_data(bbox=beacon_bbox, time_range=time_range, columns=['t2m'])
+                gdf = self.beacon_cache._fetch_temperature_data(bbox=beacon_bbox, time_range=time_range, columns=['t2m'])
                 if not gdf.empty:
                     gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                     # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -171,16 +180,19 @@ class DataClient():
             if min_valid_time == None or max_valid_time == None:
                 print("No valid data found in beacon cache, fetching from CDS...")
                 gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"))
+                gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"))
             else:
                 print(f"Beacon cache covers time range: {min_valid_time} - {max_valid_time}")
                 if min_valid_time > time_range[0]:
                     # Request missing data from CDS
                     print(f"Requesting missing data from CDS for range: {time_range[0]} - {min_valid_time}")
                     gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_mean"))
+                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_mean"))
 
                 if max_valid_time < time_range[1]:
                     # Request missing data from CDS
                     print(f"Requesting missing data from CDS for range: {max_valid_time} - {time_range[1]}")
+                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_mean"))
                     gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_mean"))
 
             # Concatenate all GeoDataFrames
@@ -192,6 +204,7 @@ class DataClient():
         print("Fetching data from CDS...")
 
         # Implementation will go here
+        df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"), from_unit, to_unit)
         df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"), from_unit, to_unit)
 
         return df
@@ -208,6 +221,43 @@ class DataClient():
         - precipitation is in L/m^2/day
         """
         # Implementation will go here
+        if self.beacon_cache:
+            print("Fetching data from beacon cache...")
+            beacon_bboxes = self._bbox_to_0_360(bbox)
+            
+            min_valid_time = None
+            max_valid_time = None
+            
+            gdfs = []
+            for beacon_bbox in beacon_bboxes:
+                print("Beacon Bbox: "+  str(beacon_bbox))
+                gdf = self.beacon_cache._fetch_total_precipitation_data(bbox=beacon_bbox, time_range=time_range)
+                if not gdf.empty:
+                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
+                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
+                    min_valid_time = gdf['valid_time'].min()
+                    max_valid_time = gdf['valid_time'].max()
+                    gdfs.append(gdf)
+                if min_valid_time == None or max_valid_time == None:
+                    print("No valid data found in beacon cache, fetching from CDS...")
+                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"))
+                else:
+                    print(f"Beacon cache covers time range: {min_valid_time} - {max_valid_time}")
+                    if min_valid_time > time_range[0]:
+                        # Request missing data from CDS
+                        print(f"Requesting missing data from CDS for range: {time_range[0]} - {min_valid_time}")
+                        gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_sum"))
+                    if max_valid_time < time_range[1]:
+                        # Request missing data from CDS
+                        print(f"Requesting missing data from CDS for range: {max_valid_time} - {time_range[1]}")
+                        gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_sum"))
+        
+            # Concatenate all GeoDataFrames
+            final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
+            return self._convert_precipitation(final_gdf, from_unit, to_unit)
+        
+        print("Fetching data from CDS...")
+        return self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), from_unit, to_unit)
         if self.beacon_cache:
             print("Fetching data from beacon cache...")
             beacon_bboxes = self._bbox_to_0_360(bbox)
@@ -270,6 +320,10 @@ class DataClient():
                 return self.z500_geopotential_mean(bbox, time_range, **unit_kwargs)
             case 'mean_sea_level_pressure':
                 return self.mean_sea_level_pressure(bbox, time_range, **unit_kwargs)
+            case 'z500_geopotential_mean':
+                return self.z500_geopotential_mean(bbox, time_range, **unit_kwargs)
+            case 'mean_sea_level_pressure':
+                return self.mean_sea_level_pressure(bbox, time_range, **unit_kwargs)
             case _:
                 return ValueError(f"Unsupported parameter: {parameter}")
     
@@ -296,6 +350,34 @@ class CDSClient():
             current_start = datetime(year=current_start.year + 1, month=1, day=1)
         ranges.append((current_start, end))
         return ranges
+    
+    def _build_request_pressure_levels(self, variables: list[str], bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], levels: list[int], daily_statistic: str = "daily_mean") -> dict:
+        start_dt, end_dt = time_range
+        # convert to pandas Timestamp for range generation
+        start = pd.Timestamp(start_dt)
+        end = pd.Timestamp(end_dt)
+        dates = pd.date_range(start=start, end=end, freq='D')
+
+        year = str(start.year)
+        months = sorted({d.strftime('%m') for d in dates})
+        days = sorted({d.strftime('%d') for d in dates})
+
+        request = {
+            "product_type": "reanalysis",
+            "variable": variables,
+            "year": year,
+            "month": months,
+            "day": days,
+            "pressure_level": levels,
+            "daily_statistic": daily_statistic,
+            "time_zone": "utc+00:00",
+            "frequency": "1_hourly",
+            # CDS expects [north, west, south, east]
+            "area": [bbox[3], bbox[0], bbox[1], bbox[2]],
+        }
+        return request
+
+    def _build_request_single_levels(
     
     def _build_request_pressure_levels(self, variables: list[str], bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], levels: list[int], daily_statistic: str = "daily_mean") -> dict:
         start_dt, end_dt = time_range
@@ -398,6 +480,44 @@ class CDSClient():
         return combined_gdf
 
     def _fetch_data_single_levels(
+    
+    def _fetch_data_pressure_levels(
+        self,
+        dataset: str,
+        variables: list[str],
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        levels: list[int],
+        daily_statistic: str = "daily_mean"
+    ) -> gpd.GeoDataFrame:
+        """
+        Fetch data from CDS API for given variables and bbox, splitting by year.
+        Saves each year's netCDF to a temp file, converts entire xarray dataset
+        straight to a pandas DataFrame, then to a GeoDataFrame.
+        Returns a list of GeoDataFrames, one per year.
+        """
+        yearly_ranges = self._split_time_range_by_year(*time_range)
+        gdfs = []
+        for start_dt, end_dt in yearly_ranges:
+            req = self._build_request_pressure_levels(variables, bbox, (start_dt, end_dt), levels, daily_statistic=daily_statistic)
+            with tempfile.NamedTemporaryFile(suffix='.nc') as tmp:
+                self.cds_client.retrieve(
+                    dataset,
+                    req
+                ).download(target=tmp.name)
+                # open dataset
+                ds = xr.open_dataset(tmp.name)
+                # convert entire dataset to DataFrame
+                df = ds.to_dataframe().reset_index()
+                # create geometry
+                df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+                gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+                gdfs.append(gdf)
+                
+        combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
+        return combined_gdf
+
+    def _fetch_data_single_levels(
         self,
         dataset: str,
         variables: list[str],
@@ -414,6 +534,7 @@ class CDSClient():
         yearly_ranges = self._split_time_range_by_year(*time_range)
         gdfs = []
         for start_dt, end_dt in yearly_ranges:
+            req = self._build_request_single_levels(variables, bbox, (start_dt, end_dt), daily_statistic=daily_statistic)
             req = self._build_request_single_levels(variables, bbox, (start_dt, end_dt), daily_statistic=daily_statistic)
             with tempfile.NamedTemporaryFile(suffix='.nc') as tmp:
                 self.cds_client.retrieve(
@@ -446,6 +567,7 @@ class BeaconDataClient():
         # Do a check for connecting to the Beacon Cache Layer
         self.beacon_client.check_status()
 
+    def _fetch_temperature_data(self, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], columns: list[str]) -> gpd.GeoDataFrame:
     def _fetch_temperature_data(self, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], columns: list[str]) -> gpd.GeoDataFrame:
         
         era5_table = self.beacon_client.list_tables()['era5_daily_mean_2m_temperature']
