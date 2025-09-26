@@ -132,12 +132,12 @@ def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDa
     )
 
     # Apply calculation
-    if calcation == "subtract":
+    if calcation == "absolute":
         merged[value_col] = merged[value_col] - merged[f"{value_col}_mean"]
-    elif calcation == "divide":
+    elif calcation == "relative":
         merged[value_col] = (merged[value_col] - merged[f"{value_col}_mean"]) / merged[f"{value_col}_mean"]
     else:
-        raise ValueError("calcation must be 'subtract' or 'divide'")
+        raise ValueError("calcation must be 'absolute' or 'relative'")
 
     # Drop helper column
     merged.drop(columns=[f"{value_col}_mean"], inplace=True)

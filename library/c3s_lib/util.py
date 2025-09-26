@@ -255,6 +255,6 @@ def get_value_col(parameter:str):
         case 'Tmean' | 'Tmin' | 'Tmax':
             return 't2m'
         case 'Precipitation':
-            return 'pt'
+            return 'tp'
         case _:
             raise ValueError(f"Unsupported parameter: {parameter}")
