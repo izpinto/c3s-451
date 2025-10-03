@@ -70,3 +70,19 @@ pylint-output.txt
 *.local
 
 
+# any saves of date/imgs we make
+*.gpkg
+*.csv
+*.nc
+*.cpg
+*.dbf
+*.prj
+*.shp
+*.shx
+*.tif
+*.tiff
+*.png
+*.jpg
+*.jpeg
+*.geojson
+
