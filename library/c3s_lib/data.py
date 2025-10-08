@@ -266,9 +266,9 @@ class DataClient():
                 return self.temperature_2m_max(bbox, time_range, **unit_kwargs)
             case 'precipitation':
                 return self.total_precipitation(bbox, time_range, **unit_kwargs)
-            case 'z500_geopotential_mean':
+            case 'z500': # 'z500_geopotential_mean':
                 return self.z500_geopotential_mean(bbox, time_range, **unit_kwargs)
-            case 'mean_sea_level_pressure':
+            case 'slp': # 'mean_sea_level_pressure':
                 return self.mean_sea_level_pressure(bbox, time_range, **unit_kwargs)
             case _:
                 return ValueError(f"Unsupported parameter: {parameter}")
@@ -395,6 +395,10 @@ class CDSClient():
                 gdfs.append(gdf)
                 
         combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
+
+        # filter on given time range instead of taking the entire month
+        combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= start_dt) & (combined_gdf['valid_time'] <= end_dt)]
+
         return combined_gdf
 
     def _fetch_data_single_levels(
@@ -430,6 +434,10 @@ class CDSClient():
                 gdfs.append(gdf)
                 
         combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
+
+        # filter on given time range instead of taking the entire month
+        combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= start_dt) & (combined_gdf['valid_time'] <= end_dt)]
+
         return combined_gdf
     
     

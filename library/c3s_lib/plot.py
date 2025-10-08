@@ -291,17 +291,17 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
 ## shared colorbar is title + legend_title
 ## individual colorbars have legend_title and complete fig has title
 def subplot_gdf(
-    gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
+    gdfs:gpd.GeoDataFrame, value_col:str, legend_title:str, datetime_col:str='valid_time',
     polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
-    cmap:str=None, legend_title:str='Temperature (°C)', borders:bool=True,
-    coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
-    projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]=None,
-    dpi:int=100, flatten_empty_plots:bool=True, marker:str='s',
-    shared_colorbar:bool=True, add_logos:bool=True, polygon_color='cyan'
+    cmap:str=None, borders:bool=True, coastlines:bool=True, gridlines:bool=True,
+    subtitle:str=None, projection:cartopy.crs=ccrs.PlateCarree(),
+    extends:tuple[float, float, float, float]=None, dpi:int=100,
+    flatten_empty_plots:bool=True, marker:str='s',shared_colorbar:bool=True,
+    add_logos:bool=True, polygon_color='cyan'
 ):
     
-    # get colormap
-    #cmap = get_colormap(cmap if cmap else value_col)
+    # set cmap type
+    cmap = cmap if cmap else value_col
 
     # Ensure datetime column is datetime type
     gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
@@ -322,7 +322,7 @@ def subplot_gdf(
     if shared_colorbar:
         vmin = gdfs[value_col].min()
         vmax = gdfs[value_col].max()
-        cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
+        cmap, norm = get_colormap(cmap, vmin, vmax)
 
 
     for i, day in enumerate(unique_days):
@@ -333,18 +333,13 @@ def subplot_gdf(
         if not shared_colorbar:
             vmin = day_gdf[value_col].min()
             vmax = day_gdf[value_col].max()
-            cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
+            cmap, norm = get_colormap(cmap, vmin, vmax)
 
         # Plot
         day_gdf.plot(
-            ax=ax,
-            column=value_col,
-            cmap=cmap,
-            legend=False,  # individual legends if no shared colorbar
-            vmin=vmin,
-            vmax=vmax,
-            marker=marker,
-            norm=norm
+            ax=ax, column=value_col, cmap=cmap,
+            legend=False, vmin=vmin, vmax=vmax,
+            marker=marker, norm=norm
         )
 
         if not shared_colorbar:
@@ -389,7 +384,10 @@ def subplot_gdf(
         #norm = cmap_norm_boundary(vmin, vmax, 11)
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm._A = []
-        cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top", fraction=0.01, pad=.07, aspect=60, ticks=norm.boundaries)
+        cbar = fig.colorbar(
+            sm, ax=axes.tolist(), 
+            orientation='horizontal', location="top",
+            fraction=0.01, pad=.07, aspect=60, ticks=norm.boundaries)
         cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
         # cbar.set_ticks(np.round(norm.boundaries).astype(int))
         plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=roboto_condensed_regular.get_name(), fontsize=13)
@@ -717,4 +715,146 @@ def plot_n_days(
         return fig, ax, img_ax
     else:
         return fig, ax
-    
+
+
+
+
+def subplot_contours(
+    contour_gdf:gpd.GeoDataFrame, gdf:gpd.GeoDataFrame, value_col:str, contour_col:str,
+    legend_title:str=None, datetime_col:str="valid_time",
+    polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int,int]=(20,10),
+    cmap:str|None=None, borders:bool=True, coastlines:bool=True, gridlines:bool=True,
+    subtitle:str=None, extends:tuple[float,float,float,float]=None, dpi:int=100,
+    flatten_empty_plots:bool=True, marker:str='s', shared_colorbar:bool=True,
+    add_logos:bool=False, polygon_color:str='cyan', contour_steps:int=200,
+    projection:cartopy.crs=ccrs.PlateCarree(), grid_line_col:str='gray', grid_line_size:float=.4,
+    grid_line_alpha:float=.5
+):
+    """
+    Plot daily values from a GeoDataFrame with Z500 contours from another GeoDataFrame.
+    """
+
+    # set cmap type
+    cmap = cmap if cmap else value_col
+
+    # Ensure datetime
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+    contour_gdf[datetime_col] = pd.to_datetime(contour_gdf[datetime_col])
+
+    # Unique sorted days
+    unique_days = sorted(contour_gdf[datetime_col].dt.date.unique())
+    n_plots = len(unique_days)
+    nrows = math.ceil(n_plots / ncols)
+
+    # Projection fixed to LambertConformal
+    mid_lon = contour_gdf["longitude"].mean()
+    mid_lat = contour_gdf["latitude"].mean()
+    proj = ccrs.LambertConformal(central_longitude=mid_lon, central_latitude=mid_lat)
+
+    # Figure
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=figsize, dpi=dpi,
+        subplot_kw={"projection": proj}
+    )
+    axes = axes.flatten()
+
+    # Shared color scale
+    if shared_colorbar:
+        vmin = gdf[value_col].min()
+        vmax = gdf[value_col].max()
+        cmap, norm = get_colormap(cmap, vmin, vmax)
+    else:
+        norm = None
+
+    # contour contour levels
+    zmin, zmax = contour_gdf[contour_col].min(), contour_gdf[contour_col].max()
+    z_lev = np.arange(round(zmin), round(zmax), contour_steps)
+
+    for i, day in enumerate(unique_days):
+        ax = axes[i]
+        day_gdf = gdf[gdf[datetime_col].dt.date == day]
+
+        if not shared_colorbar:
+            vmin = day_gdf[value_col].min()
+            vmax = day_gdf[value_col].max()
+            cmap, norm = get_colormap(cmap, vmin, vmax)
+
+        if not day_gdf.empty:
+            day_gdf.plot(
+                ax=ax, column=value_col, cmap=cmap,
+                legend=False, vmin=vmin, vmax=vmax,
+                norm=norm, marker=marker,
+                transform=projection
+            )
+
+        # --- Z500 contours ---
+        contour_day = contour_gdf[contour_gdf[datetime_col].dt.date == day]
+        if not contour_day.empty:
+            pivot = contour_day.pivot_table(index="latitude", columns="longitude", values=contour_col)
+            lon, lat, Z = pivot.columns.values, pivot.index.values, pivot.values
+            cn = ax.contour(lon, lat, Z, z_lev, colors="dimgray", linewidths=0.5, transform=projection)
+            ax.clabel(cn, inline=1)
+
+        if not shared_colorbar:
+            # Add colorbar per axis
+            #norm = cmap_norm_boundary(vmin, vmax, 11)
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm._A = []
+            cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.04, pad=0.04, ticks=norm.boundaries)
+            cbar.set_label(legend_title)
+
+        # Map features
+
+        if gridlines:
+            gl = ax.gridlines(
+                draw_labels=True, x_inline=False, y_inline=False,
+                linewidth=grid_line_size, color=grid_line_col, alpha=grid_line_alpha
+            )
+            gl.right_labels = gl.top_labels = False
+            # gl.xlabel_style = {"size": 8, "color": grid_line_col}
+            # gl.ylabel_style = {"size": 8, "color": grid_line_col}
+
+        if coastlines:
+            ax.coastlines(resolution="50m", color="black", linewidth=0.5, alpha=0.7)
+        if borders:
+            ax.add_feature(cfeature.BORDERS, lw=0.5, alpha=0.7, color="black")
+
+        if polygons is not None:
+            for poly in polygons:
+                x, y = poly.exterior.xy
+                ax.plot(x, y, color=polygon_color, linewidth=2, transform=projection)
+
+        ax.set_title(f"{day}", fontsize=18, weight='medium')
+
+        if extends is not None:
+            ax.set_extent(extends, crs=projection)
+
+
+    fig.subplots_adjust(hspace=.8, wspace=.1)
+
+    # Hide empty plots
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(not flatten_empty_plots)
+
+    # Shared colorbar
+    if shared_colorbar:
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm._A = []        
+        cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='horizontal', location="top",
+                            fraction=0.01, pad=.07, aspect=60, ticks=norm.boundaries)
+        cbar.set_label(legend_title if legend_title else value_col,
+                       labelpad=10, fontsize=27, weight='bold', color='#364563')
+        plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=roboto_condensed_regular.get_name(), fontsize=13)
+        plt.show()
+
+    if subtitle:
+        fig.suptitle(subtitle, y=1.05)
+
+    # fig.subplots_adjust(wspace=0.25, hspace=.45, top=.85)
+
+    if add_logos:
+        plt.close(fig)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.1)
+        return fig, axes, img_ax
+    else:
+        return fig, axes
