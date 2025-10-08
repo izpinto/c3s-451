@@ -204,14 +204,35 @@ def select_year_gdf(gdf: gpd.GeoDataFrame, datetime_col: str, year_range: tuple[
 # Select months
 def select_month_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, month_range:tuple[int, int]) -> gpd.GeoDataFrame:
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
     months = gdf[datetime_col].dt.month
-    return gdf[(months >= month_range[0]) & (months <= month_range[1])]
+    start_month, end_month = month_range
+
+    # if month range does not cross year boundary
+    if end_month >= start_month:
+        return gdf[(months >= start_month) & (months <= end_month)]
+    else:
+        # Cross-year range: select months across year boundary
+        gdf = gdf[(months >= start_month) | (months <= end_month)]
+        # Shift early months (before start_month) back one year
+        shift_mask = gdf[datetime_col].dt.month < start_month
+        gdf.loc[shift_mask, datetime_col] = gdf.loc[shift_mask, datetime_col] - pd.DateOffset(years=1)
+        return gdf
 
 # Select days
 def select_doy_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, doy_range:tuple[int, int]) -> gpd.GeoDataFrame:
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
     doys = gdf[datetime_col].dt.dayofyear
-    return gdf[(doys >= doy_range[0]) & (doys <= doy_range[1])]
+    start_doy, end_doy = doy_range
+
+    if end_doy >= start_doy:
+        return gdf[(doys >= start_doy) & (doys <= end_doy)]
+    else:
+        gdf = gdf[(doys >= start_doy) | (doys <= end_doy)]
+        shift_mask = gdf[datetime_col].dt.dayofyear < start_doy
+        gdf.loc[shift_mask, datetime_col] = gdf.loc[shift_mask, datetime_col] - pd.DateOffset(years=1)
+        return gdf
 
 # Create a subset of the gdf
 def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
@@ -250,7 +271,7 @@ def shift_datetime_by_months(gdf:gpd.GeoDataFrame, datetime_col:str, shift_by:in
 
     return gdf
 
-def get_value_col(parameter:str):
+def get_value_col(parameter:str) -> str:
     match(parameter):
         case 'Tmean' | 'Tmin' | 'Tmax':
             return 't2m'
