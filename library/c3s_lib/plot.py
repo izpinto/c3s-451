@@ -851,6 +851,7 @@ def subplot_contours(
         fig.suptitle(subtitle, y=1.05)
 
     # fig.subplots_adjust(wspace=0.25, hspace=.45, top=.85)
+    fig.tight_layout()
 
     if add_logos:
         plt.close(fig)
