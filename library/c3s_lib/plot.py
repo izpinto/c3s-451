@@ -589,6 +589,39 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
                    draw_style:str='default', label_rotation:int=0, line_width:float=1.5, labelticks:list[str]=None, labels:list[str]=None,
                    add_logos:bool=True, center_month_labels:bool=False, full_month_names:bool=False):
     
+
+    # plot_df = data.copy()
+    # plot_df[datetime_col] = pd.to_datetime(plot_df[datetime_col])
+    # plot_df["plot_time"] = plot_df[datetime_col]
+
+    # start_month, end_month = month_range
+
+    # # Determine if the period crosses the year boundary
+    # crosses_year = (end_month < start_month)
+
+    # # Adjust months so they plot in correct chronological order
+    # if crosses_year:
+    #     # For ranges like (7,6) or (9,3): shift early months (those before start_month) forward by one year
+    #     early_mask = plot_df["plot_time"].dt.month < start_month
+    #     plot_df.loc[early_mask, "plot_time"] += pd.DateOffset(years=1)
+
+    # # Sort chronologically after shifting
+    # plot_df = plot_df.sort_values("plot_time").reset_index(drop=True)
+
+    # # ----- Create label ticks -----
+    # # Define the logical start month (the first month of the period)
+    # if crosses_year:
+    #     # e.g. (7,6) → start in July 2024 and wrap to June 2025
+    #     label_start = pd.Timestamp(f"2024-{start_month:02d}-01")
+    # else:
+    #     # e.g. (1,6) or (3,9): simple one-year span
+    #     label_start = pd.Timestamp(f"2024-{start_month:02d}-01")
+
+    # # Always 12 months long
+    # labelticks = pd.date_range(label_start, periods=12, freq="MS")
+    # labels = labelticks.strftime("%b")
+
+
     #set font family globally
     fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
 
