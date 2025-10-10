@@ -245,6 +245,77 @@ def calculate_rolling_n_days(
 
 
 
+def calculate_rolling_window(
+    gdf: Union[pd.DataFrame, gpd.GeoDataFrame],
+    value_col: str,
+    window: int,
+    centering: bool = False,
+    datetime_col: str = "valid_time",
+    method: Literal["sum", "mean", "std", "quantile", "dispersion"] = "mean",
+    quantile: float = 0.9,
+    group_by: list[str] = None,
+    min_periods: int|None = 1,
+    remove_leap_days: bool = False,
+):
+    """
+    Compute rolling statistics (sum, mean, std, quantile) over a fixed-size window.
+    Assumes datetime_col is already at the desired temporal resolution (days, months, or years).
+
+    Returns
+    -------
+    DataFrame or GeoDataFrame
+        Same as input, with rolled values in `value_col`.
+    """
+
+    if window <= 1:
+        return gdf
+
+    gdf = gdf.copy()
+
+    if remove_leap_days:
+        # Ensure datetime_col is datetime (should already be if user promised so)
+        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+        # Drop Feb 29 for yearly data consistency (optional)
+        gdf = gdf[~((gdf[datetime_col].dt.month == 2) & (gdf[datetime_col].dt.day == 29))]
+
+    if group_by is None:
+        group_by = []
+
+    def apply_roll(group):
+        group = group.sort_values(datetime_col)
+        roller = group[value_col].rolling(window=window, min_periods=min_periods, center=centering)
+
+        match method:
+            case "sum":
+                rolled = roller.sum()
+            case "mean":
+                rolled = roller.mean()
+            case "std":
+                rolled = roller.std()
+            case "quantile":
+                rolled = roller.quantile(quantile)
+            case "dispersion":
+                rolled = roller.std() / roller.mean()
+            case _:
+                raise ValueError(f"Unsupported method: {method}")
+
+        group[value_col] = rolled
+        return group
+
+    if group_by:
+        result = gdf.groupby(group_by, group_keys=False).apply(apply_roll)
+    else:
+        result = apply_roll(gdf)
+
+    # Preserve GeoDataFrame type if input was one
+    if isinstance(gdf, gpd.GeoDataFrame):
+        return gpd.GeoDataFrame(result, geometry="geometry", crs=gdf.crs)
+    return result
+
+
+
+
 def calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
     """
     Parameters:

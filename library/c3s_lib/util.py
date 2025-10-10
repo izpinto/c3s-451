@@ -179,11 +179,14 @@ def add_month_column(gdf, datetime_col:str, month_col:str='month') -> gpd.GeoDat
     return gdf
 
 # Adds a columns specifying the year
-def add_year_column(gdf, datetime_col:str, year_col:str='year') -> gpd.GeoDataFrame:  
+def add_year_column(gdf, datetime_col:str, year_col:str='year', drop_datetime_col:bool=False) -> gpd.GeoDataFrame:  
     gdf = gdf.copy()
 
     gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
     gdf[year_col] = gdf[datetime_col].dt.year
+
+    if drop_datetime_col:
+        gdf = gdf.drop(columns=[datetime_col])
 
     return gdf
 
