@@ -428,7 +428,7 @@ def calculate_min(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str, groupby
 
 def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str,
                            yearly_value:str, month_range:tuple[int, int]|None=None,
-                           padding:int=0) -> gpd.GeoDataFrame:
+                           padding:int=0, method:str='mean') -> gpd.GeoDataFrame:
 
     # if month_range is present select a subset of the gdf
     if month_range is not None:
@@ -449,8 +449,8 @@ def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str
     
     # calculate running mean. if padding == 1 gdf gets automatically returned
     rolled_gdf = calculate_rolling_n_days(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
-                                        padding=padding, centering=True)
-    
+                                        padding=padding, centering=True, method=method)
+
     # subset the gdf to remove potential padding
     if month_range is not None:
         rolled_gdf = subset_gdf(gdf=rolled_gdf, datetime_col=datetime_col, month_range=month_range)
