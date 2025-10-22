@@ -84,7 +84,7 @@ def get_colormap(map:str, vmin, vmax):
             norm = cmap_norm_boundary(vmin, vmax, 6) if vmin >= 0 else cmap_norm_boundary(vmin, vmax, 6) if vmax <= 0 else cmap_norm_boundary(-max(abs(vmin), abs(vmax)), max(abs(vmin), abs(vmax)), 11)
             return cmap, norm
         case 'tp':
-            return precipitation_cmap, cmap_norm_boundary(0, vmax, 11)
+            return precipitation_cmap, cmap_norm_boundary(vmin, vmax, 11)
         case 'anomaly' | 'sst':
             return anomaly_cmap, cmap_norm_boundary(vmin, vmax, 11)
         case _:
@@ -587,7 +587,7 @@ def elevation_region(data:dict, polygons:list[Polygon], elevation:xr.DataArray, 
 def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
                    fig_size:tuple=(12,6), dpi:int=100, show_grid:bool=True, line_style:str=':', marker_style:str=None, 
                    draw_style:str='default', label_rotation:int=0, line_width:float=1.5, labelticks:list[str]=None, labels:list[str]=None,
-                   add_logos:bool=True, center_month_labels:bool=False, full_month_names:bool=False):
+                   add_logos:bool=True, center_month_labels:bool=False, full_month_names:bool=False, ax=None):
     
 
     # plot_df = data.copy()
@@ -623,7 +623,10 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
 
 
     #set font family globally
-    fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
+    else:
+        fig = ax.figure
 
     ax.plot(data[datetime_col], data[value_col], 
             color='darkblue', 
@@ -662,7 +665,8 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
         fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-.1)
         return fig, ax, img_ax
     else:
-        return fig, ax
+        img_ax = None
+        return fig, ax, img_ax
 
 
 
