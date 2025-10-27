@@ -216,6 +216,7 @@ class DataClient():
             for beacon_bbox in beacon_bboxes:
                 print("Beacon Bbox: "+  str(beacon_bbox))
                 gdf = self.beacon_cache._fetch_total_precipitation_data(bbox=beacon_bbox, time_range=time_range)
+                gdf = self._convert_precipitation(gdf, "m/h", "mm")
                 if not gdf.empty:
                     gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                     # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -224,21 +225,21 @@ class DataClient():
                     gdfs.append(gdf)
                 if min_valid_time == None or max_valid_time == None:
                     print("No valid data found in beacon cache, fetching from CDS...")
-                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"))
+                    gdfs.append(self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), "m", "mm"))
                 else:
                     print(f"Beacon cache covers time range: {min_valid_time} - {max_valid_time}")
                     if min_valid_time > time_range[0]:
                         # Request missing data from CDS
                         print(f"Requesting missing data from CDS for range: {time_range[0]} - {min_valid_time}")
-                        gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_sum"))
+                        gdfs.append(self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_sum"), "m", "mm"))
                     if max_valid_time < time_range[1]:
                         # Request missing data from CDS
                         print(f"Requesting missing data from CDS for range: {max_valid_time} - {time_range[1]}")
-                        gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_sum"))
+                        gdfs.append(self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_sum"), "m", "mm"))
         
             # Concatenate all GeoDataFrames
             final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
-            return self._convert_precipitation(final_gdf, "m/h", "mm")
+            return final_gdf
         
         print("Fetching data from CDS...")
         return self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), "m", "mm")
