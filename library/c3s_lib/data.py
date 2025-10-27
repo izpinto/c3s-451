@@ -82,20 +82,27 @@ class DataClient():
 
         return df
     
-    def _convert_precipitation(self, df: gpd.GeoDataFrame, from_unit="l_m2", to_unit="mm") -> gpd.GeoDataFrame:
-        if from_unit not in ["l_m2", "mm"]:
-            raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'l_m2' or 'mm'.")
+    def _convert_precipitation(self, df: gpd.GeoDataFrame, from_unit="m", to_unit="mm") -> gpd.GeoDataFrame:
+        if from_unit not in ["m", "mm"]:
+            raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'm' or 'mm'.")
             return df
 
         if from_unit == "l_m2" and to_unit == "l_m2":
             return df
         if from_unit == "mm" and to_unit == "mm":
             return df
+        if from_unit == "m" and to_unit == "m":
+            return df
         
         if from_unit == "l_m2" and to_unit == "mm":
-            df['tp'] = df['tp'] * 1000
+            df['tp'] = df['tp'] * 1
+            print("Converted from L/m2 to mm.")
         elif from_unit == "mm" and to_unit == "l_m2":
-            df['tp'] = df['tp'] / 1000
+            df['tp'] = df['tp'] / 1
+            print("Converted from mm to L/m2.") 
+        elif from_unit == "m" and to_unit == "mm":
+            df['tp'] = df['tp'] * 24000
+            print("Converted from m to mm.")
         
         return df
     
@@ -196,7 +203,7 @@ class DataClient():
 
         return df
     
-    def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "l_m2", to_unit:str = "mm") -> gpd.GeoDataFrame:
+    def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "m", to_unit:str = "mm") -> gpd.GeoDataFrame:
         """
         Fetches precipitation data for a given bounding box and time range.
         # Parameters:
