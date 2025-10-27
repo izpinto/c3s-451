@@ -467,3 +467,22 @@ def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str
             return calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year')
         case _:
             raise ValueError("calcation must be 'subtract' or 'divide'")
+
+def calculate_seasonal_cycle(clim31d: gpd.GeoDataFrame,
+                        studyregion: gpd.GeoDataFrame | dict,
+                        month_range: tuple[int, int],
+                        value_col: str,
+                        datetime_col: str,
+                        event_end: pd.Timestamp
+):
+    gdf_sub = subset_gdf(gdf=clim31d, study_region=studyregion, month_range=month_range)
+    gdf_sub[datetime_col] = (
+        pd.to_datetime(f"{event_end.year}", format="%Y")
+        + pd.to_timedelta(gdf_sub["doy"] - 1, unit="D")
+    )
+    gdf_weighted = weighted_values(gdf_sub, value_col)
+    ts_clim31d_studyregion = calculate_mean(gdf_weighted, value_col=value_col, groupby_col=datetime_col)
+    plot_df, labels, labelticks = get_seasonal_cycle_plot_values(
+        ts_clim31d_studyregion, datetime_col=datetime_col, month_range=month_range
+    )
+    return ts_clim31d_studyregion, plot_df, labels, labelticks
