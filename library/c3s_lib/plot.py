@@ -118,8 +118,7 @@ def get_colormap(map:str, vmin, vmax):
         case 'tp':
             boundaries = precip_bins(vmax)
             cmap = precipitation_cmap
-            norm = BoundaryNorm(boundaries, len(boundaries)-1)
-            #norm = cmap_norm_boundary(vmin, vmax, len(precipitation_colors)-1)
+            norm = BoundaryNorm(boundaries, len(boundaries) - 1)
             return cmap, norm
         case 'anomaly' | 'sst':
             if vmin < -1:
