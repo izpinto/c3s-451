@@ -53,12 +53,12 @@ temperature_colors = [
 ]
 precipitation_colors = [
     "#f7fbff",   "#deebf7",  "#c6dbef",   "#9ecae1",  "#6baed6",  "#4292c6",  
-    "#2171b5",  "#08519c",  "#08306b"
+    "#2171b5",  "#08519c",  "#08306b", "#03132C"
 ]
 anomaly_colors = ["#7f0000", "#b30000", "#d73027", "#f7f7f7",  
     "#4575b4", "#313695",]
 
-anomaly_colors = ["#693f18", "#AE8B6A", "#ffffff", "#7888A4" , "#204282"]
+anomaly_colors = ["#693f18", "#AE8B6A", "#CDB6A3", "#ffffff", "#A6B4CB", "#7888A4" , "#204282"]
 
 
 # create colormap from colors
@@ -101,12 +101,9 @@ def precip_bins(vmax: float):
         return np.array([0, 1, 2, 5, 10, 20, 30, 40, 50])
     elif vmax <= 100:
         return np.array([0, 1, 2, 5, 10, 20, 40, 60, 80, 100])
-    elif vmax <= 200:
-        return np.array([0, 1, 2, 5, 10, 20, 40, 60, 100, 150, 200])
-    elif vmax <= 500:
-        return np.array([0, 1, 2, 5, 10, 20, 40, 80, 120, 200, 300, 400, 500])
     else:
-        return np.array([0, 1, 2, 5, 10, 20, 50, 100, 150, 200, 300, 400, 500, 700, 1400])
+        return np.array([0, 1, 2, 5, 10, 20, 40, 60, 100, 150, 200])
+
 
 # get colormap
 def get_colormap(map:str, vmin, vmax): 
@@ -121,7 +118,8 @@ def get_colormap(map:str, vmin, vmax):
         case 'tp':
             boundaries = precip_bins(vmax)
             cmap = precipitation_cmap
-            norm = BoundaryNorm(boundaries, len(boundaries) - 1)
+            norm = BoundaryNorm(boundaries, len(boundaries)-1)
+            #norm = cmap_norm_boundary(vmin, vmax, len(precipitation_colors)-1)
             return cmap, norm
         case 'anomaly' | 'sst':
             if vmin < -1:
