@@ -82,26 +82,16 @@ class DataClient():
 
         return df
     
-    def _convert_precipitation(self, df: gpd.GeoDataFrame, from_unit="m", to_unit="mm") -> gpd.GeoDataFrame:
-        if from_unit not in ["m", "mm"]:
-            raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'm' or 'mm'.")
-            return df
-
-        if from_unit == "l_m2" and to_unit == "l_m2":
-            return df
-        if from_unit == "mm" and to_unit == "mm":
-            return df
-        if from_unit == "m" and to_unit == "m":
+    def _convert_precipitation(self, df: gpd.GeoDataFrame, from_unit, to_unit) -> gpd.GeoDataFrame:
+        if from_unit not in ["m", "m/h"]:
+            raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'm' or 'm/h'.")
             return df
         
-        if from_unit == "l_m2" and to_unit == "mm":
-            df['tp'] = df['tp'] * 1
-            print("Converted from L/m2 to mm.")
-        elif from_unit == "mm" and to_unit == "l_m2":
-            df['tp'] = df['tp'] / 1
-            print("Converted from mm to L/m2.") 
-        elif from_unit == "m" and to_unit == "mm":
+        if from_unit == "m/h" and to_unit == "mm":
             df['tp'] = df['tp'] * 24000
+            print("Converted from m/h to mm.")
+        elif from_unit == "m" and to_unit == "mm":
+            df['tp'] = df['tp'] * 1000
             print("Converted from m to mm.")
         
         return df
@@ -248,10 +238,10 @@ class DataClient():
         
             # Concatenate all GeoDataFrames
             final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
-            return self._convert_precipitation(final_gdf, from_unit, to_unit)
+            return self._convert_precipitation(final_gdf, "m/h", "mm")
         
         print("Fetching data from CDS...")
-        return self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), from_unit, to_unit)
+        return self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), "m", "mm")
     
     def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
         
