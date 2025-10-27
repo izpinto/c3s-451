@@ -426,6 +426,9 @@ class CDSClient():
                 # convert entire dataset to DataFrame
                 df = ds.to_dataframe().reset_index()
                 # create geometry
+                col_to_drop = 'number'
+                if col_to_drop in df.columns:
+                    df = df.drop(columns=[col_to_drop])
                 df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
                 gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
                 gdfs.append(gdf)
