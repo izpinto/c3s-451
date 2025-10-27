@@ -21,6 +21,7 @@ import os
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap, BoundaryNorm, TwoSlopeNorm
 import cmocean
 import matplotlib.image as mpimg
+from matplotlib.colors import LogNorm
 from IPython.display import display, clear_output
 
 # set font directory
@@ -50,28 +51,62 @@ temperature_colors = [
     "#204182", "#24569c", "#559bd4", "#95d0f0", "#cee9f5", "#f6fcfe",
     "#fff1ba", "#ffc656", "#f6862f", "#e8432a", "#b92027"
 ]
-precipitation_colors = ["#693f18", "#ffffff", "#204182"]
-anomaly_colors = ["#af1f29", "#ffffff", "#204282"]
+precipitation_colors = [
+    "#f7fbff",   "#deebf7",  "#c6dbef",   "#9ecae1",  "#6baed6",  "#4292c6",  
+    "#2171b5",  "#08519c",  "#08306b"
+]
+anomaly_colors = ["#7f0000", "#b30000", "#d73027", "#f7f7f7",  
+    "#4575b4", "#313695",]
+
+anomaly_colors = ["#693f18", "#AE8B6A", "#ffffff", "#7888A4" , "#204282"]
+
 
 # create colormap from colors
 temperature_cmap = ListedColormap(temperature_colors, name="temperature_cmap")
 temperature_positive_cmap = ListedColormap(temperature_colors[5:], name="temperature_positive_cmap")
 temperature_negative_cmap = ListedColormap(temperature_colors[:6], name="temperature_negative_cmap")
-precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=11)
-anomaly_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", anomaly_colors, N=11)
+precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=len(precipitation_colors))
+anomaly_cmap = ListedColormap(anomaly_colors, name="anomaly_cmap")
+anomaly_positive_cmap = ListedColormap(anomaly_colors[1:], name="anomaly_positive_cmap")
+anomaly_negative_cmap = ListedColormap(anomaly_colors[:3], name="anomaly_negative_cmap")
 
 # get colormap normalization
-def cmap_norm_boundary(vmin:int|float, vmax:int|float, steps:int):
-    boundaries = np.linspace(vmin, vmax, steps + 1)
-    return BoundaryNorm(boundaries, steps)
+def cmap_norm_boundary(vmin: int | float, vmax: int | float, steps: int):
+    # Round limits to nearest integer to avoid decimals
+    vmin_i, vmax_i = int(np.floor(vmin)), int(np.ceil(vmax))
+    # Create integer step boundaries
+    step_size = max(1, (vmax_i - vmin_i) // steps)
+    boundaries = np.arange(vmin_i, vmax_i + step_size, step_size)
+    # Ensure we include the upper limit
+    if boundaries[-1] < vmax_i:
+        boundaries = np.append(boundaries, vmax_i)
+    return BoundaryNorm(boundaries, len(boundaries) - 1)
 
 def cmap_norm_twoslope(vmin, vmax, center):
-    print(vmin, center, vmax)
     return TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
 # set global style paramaters
 def set_style(param:str, value:str|int|float):
     plt.rcParams[param] = value
+
+def precip_bins(vmax: float):
+    """
+    Adaptiveprecipitation bins based on data range (mm/day or mm).
+    """
+    if vmax <= 10:
+        return np.array([0, 0.5, 1, 2, 5, 10])
+    elif vmax <= 20:
+        return np.array([0, 1, 2, 5, 10, 15, 20])
+    elif vmax <= 50:
+        return np.array([0, 1, 2, 5, 10, 20, 30, 40, 50])
+    elif vmax <= 100:
+        return np.array([0, 1, 2, 5, 10, 20, 40, 60, 80, 100])
+    elif vmax <= 200:
+        return np.array([0, 1, 2, 5, 10, 20, 40, 60, 100, 150, 200])
+    elif vmax <= 500:
+        return np.array([0, 1, 2, 5, 10, 20, 40, 80, 120, 200, 300, 400, 500])
+    else:
+        return np.array([0, 1, 2, 5, 10, 20, 50, 100, 150, 200, 300, 400, 500, 700, 1400])
 
 # get colormap
 def get_colormap(map:str, vmin, vmax): 
@@ -81,12 +116,23 @@ def get_colormap(map:str, vmin, vmax):
     match map:
         case 't2m':
             cmap = temperature_positive_cmap if vmin >= 0 else temperature_negative_cmap if vmax <= 0 else temperature_cmap
-            norm = cmap_norm_boundary(vmin, vmax, 6) if vmin >= 0 else cmap_norm_boundary(vmin, vmax, 6) if vmax <= 0 else cmap_norm_boundary(-max(abs(vmin), abs(vmax)), max(abs(vmin), abs(vmax)), 11)
+            norm = cmap_norm_boundary(vmin, vmax, 6) if vmin >= 0 else cmap_norm_boundary(vmin, vmax, 6) if vmax <= 0 else cmap_norm_boundary(vmin, vmax, 11)
             return cmap, norm
         case 'tp':
-            return precipitation_cmap, cmap_norm_boundary(vmin, vmax, 11)
+            boundaries = precip_bins(vmax)
+            cmap = precipitation_cmap
+            norm = BoundaryNorm(boundaries, len(boundaries) - 1)
+            return cmap, norm
         case 'anomaly' | 'sst':
-            return anomaly_cmap, cmap_norm_boundary(vmin, vmax, 11)
+            if vmin < -1:
+                max_abs = max(abs(vmin), abs(vmax))
+                cmap = temperature_cmap
+                norm = TwoSlopeNorm(vmin=-max_abs, vcenter=0, vmax=max_abs)
+                return cmap, norm
+            else:
+                cmap = anomaly_cmap
+                norm = cmap_norm_twoslope(vmin=vmin, vmax=vmax, center=0)
+                return cmap, norm
         case _:
             return original_map, cmap_norm_boundary(vmin, vmax, 11)
 
@@ -384,12 +430,35 @@ def subplot_gdf(
         #norm = cmap_norm_boundary(vmin, vmax, 11)
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm._A = []
+
+        # Handle any normalization type
+        if hasattr(norm, "boundaries") and norm.boundaries is not None:
+            # BoundaryNorm (discrete bins)
+            ticks = norm.boundaries
+            tick_labels = [int(b) for b in ticks]
+        else:
+            if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+                # Generate ticks that always include 0
+                ticks = np.linspace(norm.vmin, norm.vmax, len(anomaly_colors))
+                if 0 not in ticks:
+                    ticks = np.sort(np.append(ticks, 0))  # ensure 0 is in there
+                tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
+            else:
+                # Normal case (temperature anomaly, etc.)
+                ticks = np.linspace(norm.vmin, norm.vmax, 7)
+                tick_labels = [round(t, 1) for t in ticks]
+
         cbar = fig.colorbar(
             sm, ax=axes.tolist(), 
             orientation='horizontal', location="top",
-            fraction=0.01, pad=.07, aspect=60, ticks=norm.boundaries)
+            fraction=0.01, pad=.07, aspect=60, ticks=ticks)
+        # Label for colorbar
         cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
         # cbar.set_ticks(np.round(norm.boundaries).astype(int))
+        # Make tick labels clean integers
+    
+        cbar.set_ticklabels(tick_labels)
+        # Font settings
         plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=roboto_condensed_regular.get_name(), fontsize=13)
         plt.show()
     
