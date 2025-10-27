@@ -101,7 +101,7 @@ class DataClient():
             df['tp'] = df['tp'] / 1
             print("Converted from mm to L/m2.") 
         elif from_unit == "m" and to_unit == "mm":
-            df['tp'] = df['tp'] * 1000
+            df['tp'] = df['tp'] * 24000
             print("Converted from m to mm.")
         
         return df
