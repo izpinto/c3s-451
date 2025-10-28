@@ -336,10 +336,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
                     ticks = np.sort(np.append(ticks, t))
             tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
         else:
-            ticks = np.linspace(norm.vmin, norm.vmax, 7)
-            for t in [-0.5, 0]:
-                if t not in ticks:
-                    ticks = np.sort(np.append(ticks, t))
+            ticks = np.linspace(norm.vmin, norm.vmax, len(cmap.colors) + 1)
             tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
 
     cbar = fig.colorbar(
@@ -467,15 +464,13 @@ def subplot_gdf(
             if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
                 # Generate ticks that always include 0
                 ticks = np.linspace(norm.vmin, norm.vmax, len(anomaly_colors))
-                if 0 not in ticks:
-                    ticks = np.sort(np.append(ticks, 0))  # ensure 0 is in there
+                for t in [0, 0.5]:
+                    if t not in ticks:
+                        ticks = np.sort(np.append(ticks, t))  # ensure 0 is in there
                 tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
             else:
                 # Normal case (temperature anomaly, etc.)
-                ticks = np.linspace(norm.vmin, norm.vmax, 7)
-                for t in [-0.5, 0]:
-                    if t not in ticks:
-                        ticks = np.sort(np.append(ticks, t))
+                ticks = np.linspace(norm.vmin, norm.vmax, len(cmap.colors) + 1)
                 tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
 
         cbar = fig.colorbar(
