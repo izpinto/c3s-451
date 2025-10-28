@@ -825,7 +825,7 @@ def plot_n_days(
 def subplot_contours(
     contour_gdf:gpd.GeoDataFrame, gdf:gpd.GeoDataFrame, value_col:str, contour_col:str,
     legend_title:str=None, datetime_col:str="valid_time",
-    polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int,int]=(20,10),
+    polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int,int]=(13,10),
     cmap:str|None=None, borders:bool=True, coastlines:bool=True, gridlines:bool=True,
     subtitle:str=None, extends:tuple[float,float,float,float]=None, dpi:int=100,
     flatten_empty_plots:bool=True, marker:str='s', shared_colorbar:bool=True,
@@ -920,7 +920,7 @@ def subplot_contours(
         if coastlines:
             ax.coastlines(resolution="50m", color="black", linewidth=0.5, alpha=0.7)
         if borders:
-            ax.add_feature(cfeature.BORDERS, lw=0.5, alpha=0.7, color="black")
+            ax.add_feature(cfeature.BORDERS.with_scale('50m'), edgecolor="black", linewidth=0.5)
 
         if polygons is not None:
             for poly in polygons:
@@ -933,7 +933,8 @@ def subplot_contours(
             ax.set_extent(extends, crs=projection)
 
 
-    fig.subplots_adjust(hspace=.8, wspace=.1)
+    fig.subplots_adjust(hspace=.25, wspace=.05)
+    fig.tight_layout(pad=0.5)
 
     # Hide empty plots
     for j in range(i + 1, len(axes)):
