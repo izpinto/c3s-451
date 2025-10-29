@@ -52,11 +52,9 @@ temperature_colors = [
     "#fff1ba", "#ffc656", "#f6862f", "#e8432a", "#b92027"
 ]
 precipitation_colors = [
-    "#f7fbff",   "#deebf7",  "#c6dbef",   "#9ecae1",  "#6baed6",  "#4292c6",  
-    "#2171b5",  "#08519c",  "#08306b", "#03132C"
+    "#f3f7fb",   "#deebf7",  "#c6dbef",   "#9ecae1",  "#6baed6",  "#4292c6",  
+    "#1d609b",  "#08396b"
 ]
-anomaly_colors = ["#7f0000", "#b30000", "#d73027", "#f7f7f7",  
-    "#4575b4", "#313695",]
 
 anomaly_colors = ["#693f18", "#AE8B6A", "#CDB6A3", "#ffffff", "#A6B4CB", "#7888A4" , "#204282"]
 
@@ -67,6 +65,11 @@ temperature_positive_cmap = ListedColormap(temperature_colors[5:], name="tempera
 temperature_negative_cmap = ListedColormap(temperature_colors[:6], name="temperature_negative_cmap")
 precipitation_cmap = LinearSegmentedColormap.from_list("precipitation_cmap", precipitation_colors, N=len(precipitation_colors))
 anomaly_cmap = ListedColormap(anomaly_colors, name="anomaly_cmap")
+anomaly_cmap = LinearSegmentedColormap.from_list(
+    "anomaly_cmap",
+    anomaly_colors,
+    N=256
+)
 anomaly_positive_cmap = ListedColormap(anomaly_colors[1:], name="anomaly_positive_cmap")
 anomaly_negative_cmap = ListedColormap(anomaly_colors[:3], name="anomaly_negative_cmap")
 
@@ -93,16 +96,18 @@ def precip_bins(vmax: float):
     """
     Adaptiveprecipitation bins based on data range (mm/day or mm).
     """
-    if vmax <= 10:
-        return np.array([0, 0.5, 1, 2, 5, 10])
-    elif vmax <= 20:
-        return np.array([0, 1, 2, 5, 10, 15, 20])
-    elif vmax <= 50:
-        return np.array([0, 1, 2, 5, 10, 20, 30, 40, 50])
-    elif vmax <= 100:
-        return np.array([0, 1, 2, 5, 10, 20, 40, 60, 80, 100])
+    if vmax <= 15:
+        return np.array([0, 1, 2, 3, 4, 6, 7, 8, 10])
+    elif vmax <= 40:
+        return np.array([0, 1, 2, 4, 6, 8, 10, 15, 20])
+    elif vmax <= 75:
+        return np.array([0, 5, 10, 15, 20, 25, 30, 40, 50])
+    elif vmax <= 150:
+        return np.array([0, 5, 10, 20, 30, 40, 60, 80, 100])
+    elif vmax <= 300:
+        return np.array([0, 25, 50, 75, 100, 125, 150, 175, 200])
     else:
-        return np.array([0, 1, 2, 5, 10, 20, 40, 60, 100, 150, 200])
+        return np.array([0, 50, 100, 150, 200, 250, 300, 350, 400])
 
 
 # get colormap
@@ -287,17 +292,11 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     vmax = gdf[value_col].max()
     cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
 
-    # Set the colorbar properties
-    legend_title = legend_title if legend_title else "legend"
-
     # Plot the GeoDataFrame
-    gdf.plot(ax = ax, cmap=cmap, norm=norm, legend=legend,
-            legend_kwds={'label': legend_title,
-                         "ticks": norm.boundaries if hasattr(norm, "boundaries") else None,
-                         "norm": norm,
-                         "shrink": 0.9},
-            column = value_col, marker=marker
-            )
+    gdf.plot(
+        ax=ax, column=value_col, cmap=cmap, norm=norm,
+        legend=False, marker=marker
+    )
 
     # Add contextily basemap
     if gridlines:
@@ -321,6 +320,34 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     # Set extent if provided
     if extends is not None:
       ax.set_extent(extends, crs=projection)
+
+    # Custom colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm._A = []
+
+    if hasattr(norm, "boundaries") and norm.boundaries is not None:
+        ticks = norm.boundaries
+        tick_labels = [int(b) for b in ticks]
+    else:
+        if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+            ticks = np.linspace(norm.vmin, norm.vmax, len(anomaly_colors))
+            for t in [-0.5, 0]:
+                if t not in ticks:
+                    ticks = np.sort(np.append(ticks, t))
+            tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
+        else:
+            ticks = np.linspace(norm.vmin, norm.vmax, 11)
+            tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
+
+    cbar = fig.colorbar(
+        sm, ax=ax, orientation='vertical', location="right",
+        fraction=0.04, pad=.04, aspect=25, ticks=ticks
+    )
+    legend_title = legend_title if legend_title else value_col
+    cbar.set_label(legend_title, labelpad=10, fontsize=20, weight='bold', color='#364563')
+    cbar.set_ticklabels(tick_labels)
+    plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'),
+             family=roboto_condensed_regular.get_name(), fontsize=13)
 
     if add_logos:
         plt.close(fig)
@@ -437,13 +464,14 @@ def subplot_gdf(
             if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
                 # Generate ticks that always include 0
                 ticks = np.linspace(norm.vmin, norm.vmax, len(anomaly_colors))
-                if 0 not in ticks:
-                    ticks = np.sort(np.append(ticks, 0))  # ensure 0 is in there
+                for t in [0, -0.5]:
+                    if t not in ticks:
+                        ticks = np.sort(np.append(ticks, t))  # ensure 0 is in there
                 tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
             else:
                 # Normal case (temperature anomaly, etc.)
-                ticks = np.linspace(norm.vmin, norm.vmax, 7)
-                tick_labels = [round(t, 1) for t in ticks]
+                ticks = np.linspace(norm.vmin, norm.vmax, 11)
+                tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
 
         cbar = fig.colorbar(
             sm, ax=axes.tolist(), 
@@ -740,7 +768,7 @@ def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, dat
 
 def plot_n_days(
     rolled_data_list:list[gpd.GeoDataFrame], value_col:str, parameter:str, event_date:datetime,
-    labelticks:list[int], labels:list[any], days:list[int], title:str, ylimit:int=None,
+    labelticks:list[int], labels:list[any], days:list[int], title:str,
     datetime_col:str="valid_time", add_logos:bool=True, fig_height:int=3, xtick_rotation:int=0, ncols:int=0
 ):
     """
@@ -752,13 +780,23 @@ def plot_n_days(
     ncols = ncols if ncols else nplots
     nrows = math.ceil(nplots/ncols)
 
-    fig, axs = plt.subplots(
-        ncols=ncols,
-        nrows=nrows,
-        figsize=(5 * ncols, fig_height * nrows),
-        dpi=100,
-        sharey=True
-    )
+    if value_col == 'tp':
+        fig, axs = plt.subplots(
+            ncols=ncols,
+            nrows=nrows,
+            figsize=(5 * ncols, fig_height * nrows),
+            dpi=100,
+            sharey=False
+        )
+    else:
+        fig, axs = plt.subplots(
+            ncols=ncols,
+            nrows=nrows,
+            figsize=(5 * ncols, fig_height * nrows),
+            dpi=100,
+            sharey=True
+        )
+
     axs = np.array(axs).reshape(-1)
 
     if len(rolled_data_list) == 1:
@@ -803,8 +841,6 @@ def plot_n_days(
         ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000, color="gold", alpha=0.3))
         ax.set_ylim(ylim)
 
-        if ylimit is not None:
-            ax.set_ylim(0, ylimit)
 
     fig.subplots_adjust(hspace=0.4)
 
@@ -818,7 +854,6 @@ def plot_n_days(
         return fig, ax, img_ax
     else:
         return fig, ax
-
 
 
 
