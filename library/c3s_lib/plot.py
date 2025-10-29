@@ -97,9 +97,9 @@ def precip_bins(vmax: float):
     Adaptiveprecipitation bins based on data range (mm/day or mm).
     """
     if vmax <= 15:
-        return np.array([0, 0.5, 1, 2, 3, 4, 6, 8, 10])
+        return np.array([0, 1, 2, 3, 4, 6, 7, 8, 10])
     elif vmax <= 40:
-        return np.array([0, 0.5, 1, 2, 4, 6, 10, 15, 20])
+        return np.array([0, 1, 2, 4, 6, 8, 10, 15, 20])
     elif vmax <= 75:
         return np.array([0, 5, 10, 15, 20, 25, 30, 40, 50])
     elif vmax <= 150:
