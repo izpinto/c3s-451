@@ -431,21 +431,21 @@ def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str
                            padding:int=0, method:str='mean') -> gpd.GeoDataFrame:
 
     # if month_range is present select a subset of the gdf
-    if month_range is not None:
-        start_date = pd.Timestamp(year=2001, month=month_range[0], day=1)
-        end_date = pd.Timestamp(year=2001, month=month_range[1], day=1) + pd.offsets.MonthEnd(1)
+    # if month_range is not None:
+    #     start_date = pd.Timestamp(year=2001, month=month_range[0], day=1)
+    #     end_date = pd.Timestamp(year=2001, month=month_range[1], day=1) + pd.offsets.MonthEnd(1)
 
-        # if padding is > 1 add padding to subset
-        if padding > 1:
+    #     # if padding is > 1 add padding to subset
+    #     if padding > 1:
         
-            start_date = start_date - pd.Timedelta(days=padding)
-            end_date = end_date + pd.Timedelta(days=padding)
+    #         start_date = start_date - pd.Timedelta(days=padding)
+    #         end_date = end_date + pd.Timedelta(days=padding)
 
-        start_doy = start_date.timetuple().tm_yday
-        end_doy = end_date.timetuple().tm_yday
+    #     start_doy = start_date.timetuple().tm_yday
+    #     end_doy = end_date.timetuple().tm_yday
 
-        # subset the gdf
-        gdf = subset_gdf(gdf=gdf, datetime_col=datetime_col, doy_range=(start_doy, end_doy))
+    #     # subset the gdf
+    #     gdf = subset_gdf(gdf=gdf, datetime_col=datetime_col, doy_range=(start_doy, end_doy))
     
     # calculate running mean. if padding == 1 gdf gets automatically returned
     rolled_gdf = calculate_rolling_n_days(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
