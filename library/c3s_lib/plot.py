@@ -10,6 +10,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import rasterio
+from rasterio import features
 import numpy as np
 from shapely import contains_xy
 import matplotlib.dates as mdates
@@ -55,8 +56,7 @@ precipitation_colors = [
     "#f3f7fb",   "#deebf7",  "#c6dbef",   "#9ecae1",  "#6baed6",  "#4292c6",  
     "#1d609b",  "#08396b"
 ]
-
-anomaly_colors = ["#693f18", "#AE8B6A", "#CDB6A3", "#ffffff", "#A6B4CB", "#7888A4" , "#204282"]
+anomaly_colors = ["#693f18", "#B1967E", "#D2C7BE", "#ffffff", "#A6B4CB", "#7888A4" , "#204282"]
 
 
 # create colormap from colors
@@ -111,7 +111,7 @@ def precip_bins(vmax: float):
 
 
 # get colormap
-def get_colormap(map:str, vmin, vmax): 
+def get_colormap(map:str, vmin, vmax, value_col:str=None): 
 
     original_map = map
 
@@ -126,14 +126,15 @@ def get_colormap(map:str, vmin, vmax):
             norm = BoundaryNorm(boundaries, len(boundaries) - 1)
             return cmap, norm
         case 'anomaly' | 'sst':
-            if vmin < -1:
+            if value_col in ["t2m", "sst"]:
                 max_abs = max(abs(vmin), abs(vmax))
                 cmap = temperature_cmap
                 norm = TwoSlopeNorm(vmin=-max_abs, vcenter=0, vmax=max_abs)
                 return cmap, norm
             else:
                 cmap = anomaly_cmap
-                norm = cmap_norm_twoslope(vmin=vmin, vmax=vmax, center=0)
+                vmax_adj = 0.7 * vmax
+                norm = cmap_norm_twoslope(vmin=-1, vmax=vmax_adj, center=0)
                 return cmap, norm
         case _:
             return original_map, cmap_norm_boundary(vmin, vmax, 11)
@@ -273,11 +274,12 @@ def add_image_below(fig, image_path,
 # plots a single plot of a GeoDataFrame
 def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:bool=True,
              gridlines:bool=True, title:str|None=None, legend:bool=True, legend_title:str|None=None,
-             cmap:str|None=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]|None=None,
+             cmap:str=None, fig_size:tuple[int, int]=(7,5), polygons:list[Polygon]|None=None,
              projection:cartopy.crs=ccrs.PlateCarree(), extends:tuple[float, float, float, float]|None=None,
              dpi:int=100, marker:str='s', add_logos:bool=True, polygon_color='cyan', ax=None):
     
     # get colormap
+    gdfs_local = gdf.copy()
 
     if ax is None:
         fig, ax = plt.subplots(
@@ -287,13 +289,16 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     else:
         fig = ax.figure
 
+    if cmap == "anomaly" and value_col in ["tp"]:
+        gdfs_local[value_col] = gdfs_local[value_col].clip(lower=-0.5, upper=None)
+
     # set color map   
-    vmin = gdf[value_col].min()
-    vmax = gdf[value_col].max()
-    cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax)
+    vmin = gdfs_local[value_col].min()
+    vmax = gdfs_local[value_col].max()
+    cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax, value_col=value_col)
 
     # Plot the GeoDataFrame
-    gdf.plot(
+    gdfs_local.plot(
         ax=ax, column=value_col, cmap=cmap, norm=norm,
         legend=False, marker=marker
     )
@@ -331,9 +336,9 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     else:
         if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
             ticks = np.linspace(norm.vmin, norm.vmax, len(anomaly_colors))
-            for t in [-0.5, 0]:
+            for t in [0, -0.5]:
                 if t not in ticks:
-                    ticks = np.sort(np.append(ticks, t))
+                    ticks = np.sort(np.append(ticks, t))  # ensure 0 is in there
             tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
         else:
             ticks = np.linspace(norm.vmin, norm.vmax, 11)
@@ -343,6 +348,10 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
         sm, ax=ax, orientation='vertical', location="right",
         fraction=0.04, pad=.04, aspect=25, ticks=ticks
     )
+
+    if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+        cbar.ax.set_ylim(-0.5, None)
+            
     legend_title = legend_title if legend_title else value_col
     cbar.set_label(legend_title, labelpad=10, fontsize=20, weight='bold', color='#364563')
     cbar.set_ticklabels(tick_labels)
@@ -370,14 +379,15 @@ def subplot_gdf(
     add_logos:bool=True, polygon_color='cyan'
 ):
     
+    gdfs_local = gdfs.copy()
     # set cmap type
     cmap = cmap if cmap else value_col
 
     # Ensure datetime column is datetime type
-    gdfs[datetime_col] = pd.to_datetime(gdfs[datetime_col])
+    gdfs_local[datetime_col] = pd.to_datetime(gdfs_local[datetime_col])
 
     # Unique days sorted
-    unique_days = sorted(gdfs[datetime_col].dt.date.unique())
+    unique_days = sorted(gdfs_local[datetime_col].dt.date.unique())
     n_plots = len(unique_days)
     nrows = math.ceil(n_plots / ncols)
 
@@ -388,22 +398,25 @@ def subplot_gdf(
     )
     axes = axes.flatten()
 
+    if cmap == "anomaly" and value_col in ["tp"]:
+        gdfs_local[value_col] = gdfs_local[value_col].clip(lower=-0.5, upper=None)
+
     # Shared color scale (only if shared_colorbar=True)
     if shared_colorbar:
-        vmin = gdfs[value_col].min()
-        vmax = gdfs[value_col].max()
-        cmap, norm = get_colormap(cmap, vmin, vmax)
+        vmin = gdfs_local[value_col].min()
+        vmax = gdfs_local[value_col].max()
+        cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
 
 
     for i, day in enumerate(unique_days):
         ax = axes[i]
-        day_gdf = gdfs[gdfs[datetime_col].dt.date == day]
+        day_gdf = gdfs_local[gdfs_local[datetime_col].dt.date == day]
 
         # Individual scale if not shared
         if not shared_colorbar:
             vmin = day_gdf[value_col].min()
             vmax = day_gdf[value_col].max()
-            cmap, norm = get_colormap(cmap, vmin, vmax)
+            cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
 
         # Plot
         day_gdf.plot(
@@ -415,6 +428,7 @@ def subplot_gdf(
         if not shared_colorbar:
             # Add colorbar per axis
             #norm = cmap_norm_boundary(vmin, vmax, 11)
+
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             sm._A = []
             cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.04, pad=0.04, ticks=norm.boundaries)
@@ -477,6 +491,9 @@ def subplot_gdf(
             sm, ax=axes.tolist(), 
             orientation='horizontal', location="top",
             fraction=0.01, pad=.07, aspect=60, ticks=ticks)
+        
+        if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+            cbar.ax.set_xlim(-0.5, None)
         # Label for colorbar
         cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
         # cbar.set_ticks(np.round(norm.boundaries).astype(int))
@@ -900,7 +917,7 @@ def subplot_contours(
     if shared_colorbar:
         vmin = gdf[value_col].min()
         vmax = gdf[value_col].max()
-        cmap, norm = get_colormap(cmap, vmin, vmax)
+        cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
     else:
         norm = None
 
@@ -915,7 +932,7 @@ def subplot_contours(
         if not shared_colorbar:
             vmin = day_gdf[value_col].min()
             vmax = day_gdf[value_col].max()
-            cmap, norm = get_colormap(cmap, vmin, vmax)
+            cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
 
         if not day_gdf.empty:
             day_gdf.plot(
@@ -945,7 +962,7 @@ def subplot_contours(
 
         if gridlines:
             gl = ax.gridlines(
-                draw_labels=True, x_inline=False, y_inline=False,
+                draw_labels=False, x_inline=False, y_inline=False,
                 linewidth=grid_line_size, color=grid_line_col, alpha=grid_line_alpha
             )
             gl.right_labels = gl.top_labels = False
