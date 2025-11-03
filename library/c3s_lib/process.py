@@ -458,15 +458,20 @@ def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str
     # add years to the gdf to calculate yearly values
     rolled_gdf = add_year_column(gdf=rolled_gdf, datetime_col=datetime_col)
 
+    #change name to valid_time colum to f{padding}_day rolling date
+    new_datetime_col = f"{padding}_day_rolling_date"
+    rolled_gdf = rolled_gdf.rename(columns={datetime_col: new_datetime_col})
+
+
     match yearly_value:
         case 'mean':
             return calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
         case 'max':
-            return calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year'), rolled_gdf
+            return calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year'), rolled_gdf
         case 'min':
-            return calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year'), rolled_gdf
+            return calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year'), rolled_gdf
         case _:
-            raise ValueError("calcation must be 'subtract' or 'divide'")
+            raise ValueError("calculation must be 'mean', 'max', or 'min'")
 
 def calculate_seasonal_cycle(clim31d: gpd.GeoDataFrame,
                         studyregion: gpd.GeoDataFrame | dict,
