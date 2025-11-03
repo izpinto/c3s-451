@@ -42,7 +42,8 @@ dependencies = [
   "regionmask",
   "cmocean",
   "beacon-api",
-  "cartopy"
+  "cartopy",
+  "networkx"
 ]
 
 [tool.setuptools]
