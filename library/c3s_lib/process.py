@@ -460,11 +460,11 @@ def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str
 
     match yearly_value:
         case 'mean':
-            return calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')
+            return calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
         case 'max':
-            return calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year')
+            return calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year'), rolled_gdf
         case 'min':
-            return calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year')
+            return calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=datetime_col, groupby_col='year'), rolled_gdf
         case _:
             raise ValueError("calcation must be 'subtract' or 'divide'")
 
