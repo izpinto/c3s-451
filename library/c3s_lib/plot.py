@@ -20,10 +20,13 @@ import xarray as xr
 import matplotlib.font_manager as fm
 import os
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap, BoundaryNorm, TwoSlopeNorm
+import matplotlib.colors as mcolors
 import cmocean
 import matplotlib.image as mpimg
 from matplotlib.colors import LogNorm
+import matplotlib.patches as mpatches
 from IPython.display import display, clear_output
+import re
 
 # set font directory
 BASE_DIR = os.path.dirname(__file__)
@@ -524,53 +527,49 @@ def subplot_gdf(
 
 
 
+def plot_poly(polygons:list[Polygon], coords:list[list[float]], 
+              layer:xr.DataArray=None, cmap=None, norm=None, layer_type:str="elevation",
+              projection:cartopy.crs=ccrs.PlateCarree()):
 
-
-def plot_poly(polygons:list[Polygon], coords:list[list[float]], elevation:xr.DataArray=None, projection:cartopy.crs=ccrs.PlateCarree()):
-    
     lons, lats = zip(*coords)
-    min_lon = min(lons)
-    max_lon = max(lons)
-    min_lat = min(lats)
-    max_lat = max(lats)
+    min_lon, max_lon = min(lons), max(lons)
+    min_lat, max_lat = min(lats), max(lats)
 
-    if elevation is not None:
-        elevation_subset = elevation.sel(
+    if layer is not None:
+        layer_subset = layer.sel(
             lon=slice(min_lon-3, max_lon+3),
-            lat=slice(min_lat-3, max_lat+3)  
-        ) 
+            lat=slice(min_lat-3, max_lat+3)
+        )
 
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': projection}) 
-
+    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection': projection})
     ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
     ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
     ax.add_feature(cfeature.COASTLINE)
     ax.add_feature(cfeature.LAND, edgecolor='black')
-    ax.gridlines(draw_labels=True)  
-    
+    ax.gridlines(draw_labels=True)
 
-    # Set colorbar to 1:4 to keep water blue and land green
     cax = inset_axes(
-        ax,
-        width="3%", height="100%",
-        loc='center left',
-        bbox_to_anchor=(1.1, 0., 1, 1),
-        bbox_transform=ax.transAxes,
-        borderpad=0
-    )   
-    if elevation is not None:
-        elevation_plot = elevation_subset.plot(
-            ax=ax,
-            transform=projection,
-            cmap="terrain",
-            cbar_ax=cax,
-            cbar_kwargs={"label": "Elevation (m)"},
-            add_colorbar=True,
-            add_labels=False
-        ) 
+        ax, width="3%", height="100%", loc='center left',
+        bbox_to_anchor=(1.1, 0., 1, 1), bbox_transform=ax.transAxes, borderpad=0
+    )
 
-    ax.set_title("Selected regions") 
+    if layer is not None:
+        if layer_type == "elevation":
+            layer_subset.plot(
+                ax=ax, transform=projection, cmap="terrain",
+                cbar_ax=cax, cbar_kwargs={"label": "Elevation (m)"},
+                add_labels=False
+            )
+        elif layer_type == "koppen":
+            layer_subset.plot(
+                ax=ax, transform=projection, cmap=cmap, norm=norm,
+                cbar_ax=cax, cbar_kwargs={"label": "Köppen-Geiger class"},
+                add_labels=False
+            )
 
+    ax.set_title("Selected region")
+
+    # Plot selected polygons
     for polygon in polygons:
         x, y = polygon.exterior.xy
         ax.plot(x, y, color='red', linewidth=2, transform=projection)
@@ -1023,3 +1022,144 @@ def subplot_contours(
         return fig, axes, img_ax
     else:
         return fig, axes
+
+def plot_koppen_geiger(
+    kg_da: xr.DataArray,
+    polygons: list[Polygon],
+    coords: list[list[float]],
+    legend_path: str,
+    projection=ccrs.PlateCarree(),
+    fontsize: int = 8,
+    figsize=(10, 10),
+    extra_polygons: list[Polygon] = None
+):
+    """
+    Plot Köppen–Geiger classifications for a selected region and polygons
+    with a grouped, 4-column legend at the bottom.
+    """
+
+    # =============================
+    # 1. Load legend and colormap
+    # =============================
+
+    def load_kg_legend(path):
+        rows = []
+        pattern = re.compile(r"^\s*(\d+):\s+(\w+)\s+(.*?)\s+\[(.*?)\]")
+
+        with open(path, "r") as f:
+            for line in f:
+                match = pattern.match(line)
+                if match:
+                    code   = int(match.group(1))
+                    klass  = match.group(2)
+                    desc   = match.group(3).strip()
+                    rgb    = tuple(int(v)/255 for v in match.group(4).split())
+                    rows.append((code, klass, desc, rgb))
+
+        return pd.DataFrame(rows, columns=["code", "class", "description", "rgb"])
+
+    def draw_koppen_legend(fig, kg_legend, fontsize=8):
+        """
+        Draw a Köppen-Geiger legend at the bottom of the figure in 4 columns.
+        Classes grouped by main climate categories.
+        """
+        
+        KG_GROUPS = {
+        "Tropical": [1,2,3],
+        "Arid": [4,5,6,7],
+        "Temperate": list(range(8,17)),
+        "Cold": list(range(17,29)),
+        "Polar": [29,30]
+        }
+
+        # Bottom inset axes for legend
+        fig.subplots_adjust(bottom=0.22)
+        ax = fig.add_axes([0.08, 0.07, 0.85, 0.3])
+        ax.axis("off")
+        ax.set_frame_on(False)
+
+        grouped_rows = []
+        for group, codes in KG_GROUPS.items():
+            # Group header (rgb=None)
+            grouped_rows.append((None, group))
+
+            # Rows for each class in group
+            subset = kg_legend[kg_legend["code"].isin(codes)]
+            for _, r in subset.iterrows():
+                text = f"{r['class']} — {r['description']}"
+                grouped_rows.append((r["rgb"], text))
+        
+        # Split into 4 columns
+        num_cols = 4
+        rows_per_col = int(np.ceil(len(grouped_rows) / num_cols))
+
+        for col in range(num_cols):
+            col_data = grouped_rows[col * rows_per_col:(col + 1) * rows_per_col]
+            if col == 1:
+                x0 = 0.02 + col * 0.20
+                y = 0.5
+            else:
+                x0 = 0.02 + col * 0.28
+                y = 0.5
+
+            for rgb, text in col_data:
+
+                if rgb is None:  # Group header
+                    ax.text(x0, y, text, fontweight="bold", fontsize=fontsize+5, va="top")
+                    y -= 0.065
+                    continue
+
+                # Small color box
+                ax.add_patch(mpatches.Rectangle(
+                    (x0, y - 0.03), 0.02, 0.03,
+                    color=rgb, ec="black", lw=0.3
+                ))
+
+                ax.text(x0 + 0.03, y, text, fontsize=fontsize, va="top")
+                y -= 0.05
+
+        return ax
+    kg_legend = load_kg_legend("../data/legend.txt")
+    kg_da_masked = kg_da.where(kg_da >= 1)
+
+
+    # Build listed colormap & norm
+    kg_colors = [tuple(rgb) for rgb in kg_legend["rgb"]]
+    kg_cmap = mcolors.ListedColormap(kg_colors)
+    kg_norm = mcolors.BoundaryNorm(list(kg_legend["code"]) + [31], kg_cmap.N)
+
+    fig, ax = plot_poly(polygons, coords, layer=kg_da_masked, cmap=kg_cmap, norm=kg_norm, layer_type="koppen")
+    if extra_polygons is not None and len(extra_polygons) > 0:
+        for poly in extra_polygons:
+            x, y = poly.exterior.xy
+            ax.fill(
+                x, y,
+                color="green", alpha=0.1,
+                transform=projection,
+                zorder=1  # lower -> below main polygons
+            )
+            ax.plot(
+                x, y,
+                color="green", linewidth=2,
+                transform=projection,
+                label="Original region",
+                zorder=1
+            )
+    handles = [
+        mpatches.Rectangle((0, 0), 1, 1, facecolor="white", linewidth=2, edgecolor="green", label="Original region"),
+        mpatches.Rectangle((0, 0), 1, 1, facecolor="white", linewidth=2, edgecolor="red", label="Filtered region")
+    ]
+
+    ax.legend(
+        handles=handles,
+        loc="upper right",
+        frameon=True,
+        fontsize=fontsize,
+        title="Regions",
+        title_fontsize=fontsize + 1
+    )
+
+
+    draw_koppen_legend(fig, kg_legend)
+
+    return fig, ax
