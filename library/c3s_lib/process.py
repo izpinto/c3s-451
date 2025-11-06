@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import geopandas as gpd
-from typing import Union, Literal
+from typing import Union, Literal, Dict, List
 import numpy as np
 from .util import *
+import rasterio
+from shapely.geometry import Polygon, shape
+import xarray as xr
 
 
 # Don't use
@@ -491,3 +494,102 @@ def calculate_seasonal_cycle(clim31d: gpd.GeoDataFrame,
         ts_clim31d_studyregion, datetime_col=datetime_col, month_range=month_range
     )
     return ts_clim31d_studyregion, plot_df, labels, labelticks
+
+def filter_polygons_by_kg(
+    polygons: List[Polygon],
+    kg_da: xr.DataArray,
+    category,
+    invert: bool = True  # True → exclude category, False → keep only category
+):
+    """
+    Filter polygons based on Köppen–Geiger classification raster.
+    
+    Parameters
+    ----------
+    polygons : list of shapely.Polygon
+        Input polygons to filter.
+    kg_da : xarray.DataArray
+        Köppen–Geiger classification raster (integer-coded).
+    category : str or list of str
+        Category or categories to filter (e.g. 'Tropical', ['Arid','Temperate']).
+    invert : bool, optional
+        If True, exclude the given categories (keep everything else).
+        If False, keep only the given categories.
+    
+    Returns
+    -------
+    adjusted_polygons : list of shapely.Polygon
+        Polygons after Köppen–Geiger filtering.
+    """
+    KG_GROUPS = {
+        "Tropical": [1,2,3],
+        "Arid": [4,5,6,7],
+        "Temperate": list(range(8,17)),
+        "Cold": list(range(17,29)),
+        "Polar": [29,30]
+    }
+
+    # Normalize category input
+    if isinstance(category, str):
+        category = [category]
+
+    # Combine all selected codes
+    codes = []
+    for c in category:
+        codes.extend(KG_GROUPS[c])
+
+    adjusted_polygons = []
+
+    for poly in polygons:
+        minx, miny, maxx, maxy = poly.bounds
+
+        # Subset Köppen raster to polygon extent
+        kg_subset = kg_da.sel(
+            lon=slice(minx-0.5, maxx+0.5),
+            lat=slice(miny-0.5, maxy+0.5)
+        ).squeeze()
+
+        kg_vals = kg_subset.values
+
+        # Ensure lat orientation is north-down
+        if kg_subset.lat.values[0] < kg_subset.lat.values[-1]:
+            kg_vals = kg_vals[::-1, :]
+            lat = kg_subset.lat.values[::-1]
+        else:
+            lat = kg_subset.lat.values
+
+        lon = kg_subset.lon.values
+        lon2d, lat2d = np.meshgrid(lon, lat)
+
+        inside_poly = contains_xy(poly, lon2d, lat2d)
+
+        # Mask depending on invert
+        if invert:
+            # exclude given categories
+            mask = ~np.isin(kg_vals, codes) & inside_poly
+        else:
+            # keep only given categories
+            mask = np.isin(kg_vals, codes) & inside_poly
+
+        transform = rasterio.transform.from_bounds(
+            lon.min(), lat.min(),
+            lon.max(), lat.max(),
+            len(lon), len(lat)
+        )
+
+        for geom, val in rasterio.features.shapes(
+                mask.astype(np.uint8),
+                mask=mask,
+                transform=transform):
+            
+            if val == 1:
+                new_poly = shape(geom)
+                clipped_poly = new_poly.intersection(poly)
+
+                if not clipped_poly.is_empty:
+                    if clipped_poly.geom_type == "Polygon":
+                        adjusted_polygons.append(clipped_poly)
+                    elif clipped_poly.geom_type == "MultiPolygon":
+                        adjusted_polygons.extend(list(clipped_poly.geoms))
+
+    return adjusted_polygons
