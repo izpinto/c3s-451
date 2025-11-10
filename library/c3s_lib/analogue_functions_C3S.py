@@ -429,7 +429,7 @@ def diff_significance(field1, dates1, field2, dates2):
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     u, p = stats.ttest_ind(loc_list1, loc_list2, equal_var=False, alternative='two-sided')
-            if p < 0.05:
+            if p < 0.05: 
                 sig_field[i,j] = 1
             else:
                 sig_field[i,j] = 0
