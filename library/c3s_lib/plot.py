@@ -27,6 +27,7 @@ from matplotlib.colors import LogNorm
 import matplotlib.patches as mpatches
 from IPython.display import display, clear_output
 import re
+from shapely.geometry import box
 
 # set font directory
 BASE_DIR = os.path.dirname(__file__)
@@ -137,6 +138,8 @@ def get_colormap(map:str, vmin, vmax, value_col:str=None):
             else:
                 cmap = anomaly_cmap
                 vmax_adj = 0.7 * vmax
+                if vmax_adj <= 0: # Prevent error when anomaly is all negative
+                    vmax_adj = 1
                 norm = cmap_norm_twoslope(vmin=-1, vmax=vmax_adj, center=0)
                 return cmap, norm
         case _:
@@ -301,6 +304,11 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
     cmap, norm = get_colormap(cmap if cmap else value_col, vmin, vmax, value_col=value_col)
 
     # Plot the GeoDataFrame
+    cell_size = 0.25  # degrees
+    gdfs_local["geometry"] = gdfs_local.geometry.apply(
+                lambda p: box(p.x - cell_size/2, p.y - cell_size/2,
+                              p.x + cell_size/2, p.y + cell_size/2)
+           )
     gdfs_local.plot(
         ax=ax, column=value_col, cmap=cmap, norm=norm,
         legend=False, marker=marker
@@ -378,7 +386,7 @@ def subplot_gdf(
     cmap:str=None, borders:bool=True, coastlines:bool=True, gridlines:bool=True,
     subtitle:str=None, projection:cartopy.crs=ccrs.PlateCarree(),
     extends:tuple[float, float, float, float]=None, dpi:int=100,
-    flatten_empty_plots:bool=True, marker:str='s',shared_colorbar:bool=True,
+    flatten_empty_plots:bool=True, marker:str='s', shared_colorbar:bool=True,
     add_logos:bool=True, polygon_color='cyan'
 ):
     
@@ -422,6 +430,12 @@ def subplot_gdf(
             cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
 
         # Plot
+        cell_size = 0.25  # degrees
+        day_gdf["geometry"] = day_gdf.geometry.apply(
+                lambda p: box(p.x - cell_size/2, p.y - cell_size/2,
+                              p.x + cell_size/2, p.y + cell_size/2)
+            )
+        
         day_gdf.plot(
             ax=ax, column=value_col, cmap=cmap,
             legend=False, vmin=vmin, vmax=vmax,
@@ -942,6 +956,11 @@ def subplot_contours(
             cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
 
         if not day_gdf.empty:
+            cell_size = 0.25  # degrees
+            day_gdf["geometry"] = day_gdf.geometry.apply(
+                lambda p: box(p.x - cell_size/2, p.y - cell_size/2,
+                              p.x + cell_size/2, p.y + cell_size/2)
+            )
             day_gdf.plot(
                 ax=ax, column=value_col, cmap=cmap,
                 legend=False, vmin=vmin, vmax=vmax,
@@ -1073,8 +1092,8 @@ def plot_koppen_geiger(
         }
 
         # Bottom inset axes for legend
-        fig.subplots_adjust(bottom=0.22)
-        ax = fig.add_axes([0.08, 0.07, 0.85, 0.3])
+        fig.subplots_adjust(bottom=0.25)
+        ax = fig.add_axes([0.08, 0.04, 0.85, 0.3])
         ax.axis("off")
         ax.set_frame_on(False)
 
