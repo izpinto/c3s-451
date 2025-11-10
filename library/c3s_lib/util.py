@@ -136,6 +136,12 @@ def get_base_fig(date, gdf, value_col:str, datetime_col:str='valid_time', dpi:in
 
     temp_kwargs = {"cmap" : cmap, "norm": norm}
 
+    cell_size = 0.25  # degrees
+    selected_gdf_anomoly["geometry"] = selected_gdf_anomoly.geometry.apply(
+            lambda p: box(p.x - cell_size/2, p.y - cell_size/2,
+                          p.x + cell_size/2, p.y + cell_size/2)
+        )
+
     selected_gdf_anomoly.plot(ax = ax, **temp_kwargs,
         column = value_col,
         vmin = vmin,
@@ -320,3 +326,26 @@ def get_seasonal_cycle_plot_values(data:gpd.GeoDataFrame, datetime_col:str='vali
     labels = labelticks.strftime("%b")
 
     return plot_df, labels, labelticks
+
+def convert_bbox(south: float, west: float, north: float, east: float) -> tuple:
+    """
+    Convert user-friendly bounding box order (S, W, N, E)
+    to standard geospatial format (min_lon, min_lat, max_lon, max_lat).
+    
+    Parameters
+    ----------
+    south : float
+        Southern boundary (min latitude)
+    west : float
+        Western boundary (min longitude)
+    north : float
+        Northern boundary (max latitude)
+    east : float
+        Eastern boundary (max longitude)
+    
+    Returns
+    -------
+    tuple
+        (min_lon, min_lat, max_lon, max_lat)
+    """
+    return (west, south, east, north)
