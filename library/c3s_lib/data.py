@@ -456,6 +456,35 @@ class BeaconDataClient():
         # Do a check for connecting to the Beacon Cache Layer
         self.beacon_client.check_status()
 
+    def _fetch_from_era5_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
+        """
+        Fetch data from ERA5 Zarr dataset in Beacon Cache.
+
+        Parameters
+        ----------
+        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
+        time_range : tuple (start_datetime, end_datetime)
+        variable : str, variable name to fetch. Available: ['tmean', 'tmax', 'tmin', 'tp']
+
+        Returns
+        -------
+        GeoDataFrame with data
+        """
+        era5_table = self.beacon_client.list_tables()['era5_zarr']
+        query = (era5_table.query()
+                 .add_select_column('longitude')
+                 .add_select_column('latitude')
+                 .add_select_column('valid_time')
+                 .add_select_column(variable)
+                 .add_bbox_filter('longitude','latitude', bbox)
+                 .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
+
+        df = query.to_pandas_dataframe()
+        if df.empty:
+            return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time'], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
+
+        return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
+
     def _fetch_temperature_data(self, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], columns: list[str]) -> gpd.GeoDataFrame:
         
         era5_table = self.beacon_client.list_tables()['era5_daily_mean_2m_temperature']
@@ -493,74 +522,6 @@ class BeaconDataClient():
 
         df['longitude'] = (df['longitude'] + 180) % 360 - 180
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
-    
-class CacheStatus():
-    def __init__(self) -> None:
-        self.time_range_covered = None
-
-    def update_time_range(self, time_range: tuple[datetime, datetime]) -> None:
-        self.time_range_covered = time_range
-
-class LocalFileCache():
-    def __init__(self, cache_dir: str):
-        self.cache_dir = cache_dir
-        self.cache_status = CacheStatus()
-        
-        # Check which time ranges are covered by the cache. (Make sure they are successive in years or days.)
-        files = sorted(glob.glob("./*.nc"))
-        all_times = []
-        for f in files:
-            ds = xr.open_dataset(f)
-            times = ds["valid_time"].values  # extract valid_time variable
-            all_times.append(times)
-            ds.close()
-            
-        # Flatten into one array
-        all_times = np.concatenate(all_times)
-
-        # Find min and max
-        time_min = all_times.min()
-        time_max = all_times.max()
-        
-    def get_cache_status(self) -> CacheStatus:
-        return self.cache_status
-
-    def _fetch_mean_2m_temperature(self, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
-        """
-        Fetch mean 2m temperature data from local NetCDF files.
-        """
-        # Construct file path pattern
-        files = sorted(glob.glob("./*.nc"))
-
-        # Open all matching NetCDF files
-        ds = xr.open_mfdataset(files, combine="by_coords")
-
-        min_lon_index = bbox[0] * 4 # ERA5 using 0.25 degrees grid
-        min_lat_index = bbox[1] * 4
-        max_lon_index = bbox[2] * 4
-        max_lat_index = bbox[3] * 4
-
-        def slice_region(ds):
-            return ds.isel(
-                longitude=slice(min_lon_index, max_lon_index),
-                latitude=slice(min_lat_index, max_lat_index),
-            )
-
-        ds = xr.open_mfdataset(
-            files,
-            combine="by_coords",
-            preprocess=slice_region,
-            chunks={"valid_time": -1},      # let xarray pick time chunk size
-            parallel=True,
-        )
-        
-        df = ds.to_dataframe().reset_index()
-
-        # Create GeoDataFrame
-        gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
-
-        return gdf
-    
 
 class MarsClient():
     def __init__(self, key: str):
@@ -629,6 +590,9 @@ class MarsClient():
         # Convert to dataframe but only keep (lon, lat, time, t2m)
         df = ds[['longitude', 'latitude', 'time', 't2m']].to_dataframe().reset_index()
         out_daily = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
+        
+        # Rename t2m to tmean for clarity
+        out_daily = out_daily.rename(columns={"t2m": "tmean"})
         return out_daily
     
     def fetch_t2m_min_operational_data(self) -> gpd.GeoDataFrame:
@@ -666,6 +630,9 @@ class MarsClient():
         # Convert to dataframe but only keep (lon, lat, time, tmin)
         df = ds[['longitude', 'latitude', 'time', 'mn2t6']].to_dataframe().reset_index()
         out_daily = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
+        
+        # Rename mn2t6 to tmin for clarity
+        out_daily = out_daily.rename(columns={"mn2t6": "tmin"})
         return out_daily
     
     def fetch_t2m_max_operational_data(self) -> gpd.GeoDataFrame:
@@ -702,6 +669,9 @@ class MarsClient():
         # Convert to dataframe but only keep (lon, lat, time, tmax)
         df = ds[['longitude', 'latitude', 'time', 'mx2t6']].to_dataframe().reset_index()
         out_daily = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
+        
+        # Rename mx2t6 to tmax for consistency
+        out_daily = out_daily.rename(columns={"mx2t6": "tmax"})
         return out_daily
     
     def fetch_total_precipitation_operational_data(self) -> gpd.GeoDataFrame:
@@ -740,7 +710,42 @@ class MarsClient():
         out_daily = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
         return out_daily
     
-    
+    def fetch_t2m_mean_forecast_data(self) -> gpd.GeoDataFrame:
+        # Fetch the current date -7 days as a list of dates
+        current_date = datetime.utcnow() - timedelta(days=1) # Use yesterday's date to compensate for forecast delay
+        date_str = current_date.strftime("%Y-%m-%d")
+        print(f"Fetching t2m forecast data from MARS for date: {date_str}")
+        request = {
+            "class": "od",
+            "date": date_str,
+            "step": "6/12/18/24/30/36/42/48/54/60/66/72/78/84/90/96/102/108/114/120/126/132/138/144/150/156/162/168/174/180/186",
+            "expver": "1",
+            "param": self.find_param_code("t2m"), # 2m temperature
+            "grid": "0.25/0.25", # 0.25 degree grid
+            "time": "00:00:00",
+            "format": format,
+            "class": "od",
+            "levtype": "sfc",
+            "stream": "oper",
+            "type": "fc",
+            "target": "output",
+            "format": "netcdf",
+        }
+        temp_path = self.get_temp_path()
+        self.server.execute(request,target=temp_path)
+        
+        # USE CDO to compute daily mean
+        out_daily = temp_path.replace(".nc", "_daily.nc")
+        subprocess.run([
+            "cdo", "-O", "-r", "-f", "nc4", "-s",
+            f"-daymean", f"-shifttime,3hour", temp_path, out_daily
+        ], check=True)
+        
+        ds = xr.open_dataset(out_daily)
+        # Convert to dataframe but only keep (lon, lat, time, t2m)
+        df = ds[['longitude', 'latitude', 'time', 't2m']].to_dataframe().reset_index()
+        out_daily = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
+        return out_daily
     
     def find_param_code(self, name: str) -> str | None:
         """
@@ -757,3 +762,7 @@ class MarsClient():
             # Add more mappings as needed
         }
         return param_codes.get(name)
+    
+class CordexClient():
+    def __init__(self):
+        pass
