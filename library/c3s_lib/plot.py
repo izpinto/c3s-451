@@ -357,7 +357,7 @@ def plot_gdf(gdf:gpd.GeoDataFrame, value_col:str, borders:bool=True, coastlines:
 
     cbar = fig.colorbar(
         sm, ax=ax, orientation='vertical', location="right",
-        fraction=0.04, pad=.04, aspect=25, ticks=ticks
+        fraction=0.04, pad=.04, aspect=25, ticks=ticks, shrink=0.82
     )
 
     if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
@@ -943,8 +943,15 @@ def subplot_contours(
         norm = None
 
     # contour contour levels
-    zmin, zmax = contour_gdf[contour_col].min(), contour_gdf[contour_col].max()
-    z_lev = np.arange(round(zmin), round(zmax), contour_steps)
+    # Get raw min and max
+    zmin_raw, zmax_raw = contour_gdf[contour_col].min(), contour_gdf[contour_col].max()
+
+    # Round outward to nearest step
+    zmin = np.floor(zmin_raw / contour_steps) * contour_steps
+    zmax = np.ceil(zmax_raw / contour_steps) * contour_steps
+
+    # Create clean range
+    z_lev = np.arange(zmin, zmax + contour_steps, contour_steps)
 
     for i, day in enumerate(unique_days):
         ax = axes[i]
@@ -973,7 +980,7 @@ def subplot_contours(
         if not contour_day.empty:
             pivot = contour_day.pivot_table(index="latitude", columns="longitude", values=contour_col)
             lon, lat, Z = pivot.columns.values, pivot.index.values, pivot.values
-            cn = ax.contour(lon, lat, Z, z_lev, colors="dimgray", linewidths=0.5, transform=projection)
+            cn = ax.contour(lon, lat, Z, z_lev, colors="black", linewidths=0.4, transform=projection)
             ax.clabel(cn, inline=1)
 
         if not shared_colorbar:
