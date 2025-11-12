@@ -46,8 +46,8 @@ def select_region(regionType:str, bbox:tuple[float, float, float, float]|None=No
     if response.status_code == 200:
         data = response.json()
         print(f"Region Picker started successfully for {regionType}:")
-        #print(f"Open the following page in your browser to select a region: ")
-        #print(f"\t\t{data['url']}")
+        print(f"Open the following page in your browser to select a region: ")
+        print(f"\t\t{data['url']}")
         webbrowser.open(data['url'])
         poll_url = data['poll_url']
     else:
