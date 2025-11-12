@@ -34,7 +34,7 @@ def select_region(regionType:str, bbox:tuple[float, float, float, float]|None=No
     
     print('The region picker will shortly open in your web browser. Please select a region, close the browser tab and return to the notebook when done.')
     
-    url = f"http://c3s-451/region-picker/start-m2m/{regionType}"
+    url = f"https://c3s-451.maris.nl/region-picker/start-m2m/{regionType}"
 
     #if params != None:
     #    url += urlencode(params)

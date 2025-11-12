@@ -43,7 +43,8 @@ dependencies = [
   "cmocean",
   "beacon-api",
   "cartopy",
-  "networkx"
+  "networkx",
+  "scitools-iris"
 ]
 
 [tool.setuptools]

@@ -128,7 +128,7 @@ class DataClient():
 
         return df
     
-    def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+    def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         return self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['mean_sea_level_pressure'], bbox, time_range, daily_statistic="daily_mean")
 
     def z500_geopotential_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
