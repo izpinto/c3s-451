@@ -1064,10 +1064,6 @@ def plot_koppen_geiger(
     with a grouped, 4-column legend at the bottom.
     """
 
-    # =============================
-    # 1. Load legend and colormap
-    # =============================
-
     def load_kg_legend(path):
         rows = []
         pattern = re.compile(r"^\s*(\d+):\s+(\w+)\s+(.*?)\s+\[(.*?)\]")
@@ -1145,7 +1141,7 @@ def plot_koppen_geiger(
                 y -= 0.05
 
         return ax
-    kg_legend = load_kg_legend("../data/legend.txt")
+    kg_legend = load_kg_legend(legend_path)
     kg_da_masked = kg_da.where(kg_da >= 1)
 
 
