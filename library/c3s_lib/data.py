@@ -10,11 +10,14 @@ import glob
 import numpy as np
 
 class DataClient():
-    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None):
+    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None) -> None:
         self.cds_client = CDSClient(cds_key)
         self.beacon_cache = None
+        self.mars_client = None
         if beacon_cache_url:
             self.beacon_cache = BeaconDataClient(beacon_cache_url=beacon_cache_url, beacon_token=beacon_token)
+        if mars_key:
+            self.mars_client = MarsClient(key=mars_key)
 
     def _bbox_to_0_360(self, bbox: tuple[float,float,float,float], eps=1e-9) -> list[tuple[float,float,float,float]]:
         """
@@ -147,50 +150,71 @@ class DataClient():
         - A pandas DataFrame containing the mean temperature data.
         """
         
+        min_retrieved_time = None
+        max_retrieved_time = None
+        gdfs = []
+        
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             print("Fetching data from beacon cache...")
-            beacon_bboxes = self._bbox_to_0_360(bbox)
-            
-            min_valid_time = None
-            max_valid_time = None
-            
-            gdfs = []
-            for beacon_bbox in beacon_bboxes:
-                print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_temperature_data(bbox=beacon_bbox, time_range=time_range, columns=['t2m'])
-                if not gdf.empty:
-                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
-                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
-                    min_valid_time = gdf['valid_time'].min()
-                    max_valid_time = gdf['valid_time'].max()
-                    gdfs.append(gdf)
+            gdf = self.beacon_cache._fetch_from_era5_zarr(bbox=bbox, time_range=time_range, variable='t2m')
+            if not gdf.empty:
+                gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
+                # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
+                min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
+                max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
+                gdfs.append(gdf)
                     
-            if min_valid_time == None or max_valid_time == None:
-                print("No valid data found in beacon cache, fetching from CDS...")
-                gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"))
+        if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
+            # No valid data found in beacon cache or we are missing data for the requested time range
+            print("Missing data in beacon cache, fetching missing data from CDS...")
+            
+            if min_retrieved_time is None or min_retrieved_time > time_range[0]:
+                # Request missing data from CDS
+                fetch_start = time_range[0]
+                fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
+                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
+                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_mean");
+                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
+                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
+                gdfs.append(gdf)
+                
+            if max_retrieved_time is None or max_retrieved_time < time_range[1]:
+                # Request missing data from CDS
+                fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
+                fetch_end = time_range[1]
+                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
+                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_mean");
+                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
+                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
+                gdfs.append(gdf)
+                
+        if max_retrieved_time is None or max_retrieved_time < time_range[1]:
+            # We are still missing data at the end of the range, try to fetch from MARS if available
+            print("Missing data at the end of the time range.")
+            if self.mars_client is not None:
+                print(f"Fetching missing data from MARS Operational for range: {max_retrieved_time} - {time_range[1]}")
+                mars_gdf = self.mars_client.fetch_t2m_mean_operational_data(min_date=max_retrieved_time if max_retrieved_time is not None else time_range[0], max_date=time_range[1], min_lon=bbox[0], max_lon=bbox[2], min_lat=bbox[1], max_lat=bbox[3])
+                
+                # Update min and max retrieved time
+                min_retrieved_time = mars_gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, mars_gdf['valid_time'].min())
+                max_retrieved_time = mars_gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, mars_gdf['valid_time'].max())
+                
+                gdfs.append(mars_gdf)
             else:
-                print(f"Beacon cache covers time range: {min_valid_time} - {max_valid_time}")
-                if min_valid_time > time_range[0]:
-                    # Request missing data from CDS
-                    print(f"Requesting missing data from CDS for range: {time_range[0]} - {min_valid_time}")
-                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (time_range[0], min_valid_time), daily_statistic="daily_mean"))
-
-                if max_valid_time < time_range[1]:
-                    # Request missing data from CDS
-                    print(f"Requesting missing data from CDS for range: {max_valid_time} - {time_range[1]}")
-                    gdfs.append(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (max_valid_time, time_range[1]), daily_statistic="daily_mean"))
-
-            # Concatenate all GeoDataFrames
-            final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
-
-            return self._convert_temp(final_gdf, from_unit, to_unit)
+                print("MARS client not configured, cannot fetch missing data.")
+                
+        if max_retrieved_time is None or max_retrieved_time < time_range[1]:
+            print("Still missing data. Fetching from MARS Forecast data...")
+            if self.mars_client is not None:
+                # Write warning that it is not implemented yet
+                print("MARS Forecast data fetching not implemented yet.")
         
-        # If no beacon cache, fetch directly from CDS
-        print("Fetching data from CDS...")
+        # Concatenate all GeoDataFrames
+        final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
 
         # Implementation will go here
-        df = self._convert_temp(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, time_range, daily_statistic="daily_mean"), from_unit, to_unit)
+        df = self._convert_temp(final_gdf, from_unit, to_unit)
 
         return df
     
@@ -464,7 +488,7 @@ class BeaconDataClient():
         ----------
         bbox : tuple (min_lon, min_lat, max_lon, max_lat)
         time_range : tuple (start_datetime, end_datetime)
-        variable : str, variable name to fetch. Available: ['tmean', 'tmax', 'tmin', 'tp']
+        variable : str, variable name to fetch. Available: ['t2m', 't2m_max', 't2m_tmin', 'total_precipitation']
 
         Returns
         -------
@@ -541,15 +565,20 @@ class MarsClient():
         except Exception as e:
             raise EnvironmentError(f"⚠️ CDO check failed: {e}")
     
-    def get_date_list_past_7_days(self) -> list[str]:
+    def get_date_list(self, min_date: datetime, max_date: datetime) -> list[str]:
         # Get current system date
-        given_date = datetime.now()
+        given_date = datetime.now() - timedelta(days=1)  # Yesterday
+        
+        # Ensure given_date is within min_date and max_date
+        if max_date > given_date:
+            max_date = given_date
 
-        # Generate list of 7 days before the current date
-        date_list = [(given_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(2, 8)]
+        # Generate list of days before the current date
+        date_list = []
+        while min_date <= max_date:
+            date_list.append(min_date.strftime("%Y-%m-%d"))
+            min_date += timedelta(days=1)
 
-        # Sort ascending (oldest to newest)
-        date_list.reverse()
         return date_list    
     
     def get_temp_path(self) -> str:
@@ -557,13 +586,13 @@ class MarsClient():
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.nc')
         return temp_file.name
     
-    def fetch_t2m_mean_operational_data(self) -> gpd.GeoDataFrame:
+    def fetch_t2m_mean_operational_data(self, min_date: datetime, max_date: datetime, min_lon: float, max_lon: float, min_lat: float, max_lat: float) -> gpd.GeoDataFrame:
         time = "00:00:00/06:00:00/12:00:00/18:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(f"Fetching t2m data for past 7 days from MARS: {self.get_date_list_past_7_days()}")
+        print(f"Fetching t2m data for past 7 days from MARS: {self.get_date_list(min_date, max_date)}")
         request = {
             "class": "od",
-            "date": self.get_date_list_past_7_days(),
+            "date": self.get_date_list(min_date, max_date),
             "expver": "1",
             "param": self.find_param_code("t2m"), # 2m temperature
             "grid": "0.25/0.25", # 0.25 degree grid
@@ -591,18 +620,29 @@ class MarsClient():
         df = ds[['longitude', 'latitude', 'time', 't2m']].to_dataframe().reset_index()
         out_daily = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
         
-        # Rename t2m to tmean for clarity
-        out_daily = out_daily.rename(columns={"t2m": "tmean"})
+        # Rename time to valid_time for clarity
+        out_daily = out_daily.rename(columns={"time": "valid_time"})
+        
+        # Translate longitude from 0-360 to -180 to 180
+        out_daily['longitude'] = (out_daily['longitude'] + 180) % 360 - 180
+        
+        # Filter by bounding box
+        out_daily = out_daily[
+            (out_daily['longitude'] >= min_lon) &
+            (out_daily['longitude'] <= max_lon) &
+            (out_daily['latitude'] >= min_lat) &
+            (out_daily['latitude'] <= max_lat)
+        ]
         return out_daily
     
-    def fetch_t2m_min_operational_data(self) -> gpd.GeoDataFrame:
+    def fetch_t2m_min_operational_data(self, min_date: datetime, max_date: datetime) -> gpd.GeoDataFrame:
         time = "00:00:00/12:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(f"Fetching t2m data for past 7 days from MARS: {self.get_date_list_past_7_days()}")
+        print(f"Fetching t2m min data for past 7 days from MARS: {self.get_date_list(min_date, max_date)}")
         request = {
             "class": "od",
             "step": "6/12",
-            "date": self.get_date_list_past_7_days(),
+            "date": self.get_date_list(min_date, max_date),
             "expver": "1",
             "param": self.find_param_code("tmin"), # 2m temperature
             "grid": "0.25/0.25", # 0.25 degree grid
@@ -635,14 +675,14 @@ class MarsClient():
         out_daily = out_daily.rename(columns={"mn2t6": "tmin"})
         return out_daily
     
-    def fetch_t2m_max_operational_data(self) -> gpd.GeoDataFrame:
+    def fetch_t2m_max_operational_data(self, min_date: datetime, max_date: datetime) -> gpd.GeoDataFrame:
         time = "00:00:00/12:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(f"Fetching t2m data for past 7 days from MARS: {self.get_date_list_past_7_days()}")
+        print(f"Fetching t2m max data from MARS: {self.get_date_list(min_date, max_date)}")
         request = {
             "class": "od",
             "step": "6/12",
-            "date": self.get_date_list_past_7_days(),
+            "date": self.get_date_list(min_date, max_date),
             "expver": "1",
             "param": self.find_param_code("tmax"), # 2m temperature
             "grid": "0.25/0.25", # 0.25 degree grid
@@ -674,14 +714,14 @@ class MarsClient():
         out_daily = out_daily.rename(columns={"mx2t6": "tmax"})
         return out_daily
     
-    def fetch_total_precipitation_operational_data(self) -> gpd.GeoDataFrame:
+    def fetch_total_precipitation_operational_data(self, min_date: datetime, max_date: datetime) -> gpd.GeoDataFrame:
         time = "00:00:00/12:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(f"Fetching tp data for past 7 days from MARS: {self.get_date_list_past_7_days()}")
+        print(f"Fetching tp data for past 7 days from MARS: {self.get_date_list(min_date, max_date)}")
         request = {
             "class": "od",
             "step": "6/12",
-            "date": self.get_date_list_past_7_days(),
+            "date": self.get_date_list(min_date, max_date),
             "expver": "1",
             "param": self.find_param_code("tp"), # total precipitation
             "grid": "0.25/0.25", # 0.25 degree grid
