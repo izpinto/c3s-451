@@ -86,3 +86,5 @@ pylint-output.txt
 *.jpeg
 *.geojson
 
+library/mars.ipynb
+ecmwf.ipynb
