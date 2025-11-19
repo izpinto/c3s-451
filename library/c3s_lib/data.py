@@ -157,13 +157,17 @@ class DataClient():
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             print("Fetching data from beacon cache...")
-            gdf = self.beacon_cache._fetch_from_era5_zarr(bbox=bbox, time_range=time_range, variable='t2m')
-            if not gdf.empty:
-                gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
-                # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
-                min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
-                max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
-                gdfs.append(gdf)
+            adjusted_bboxes = self._bbox_to_0_360(bbox)
+            
+            for beacon_bbox in adjusted_bboxes:
+                print("Beacon Bbox: "+  str(beacon_bbox))
+                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m')
+                if not gdf.empty:
+                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
+                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
+                    min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
+                    max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
+                    gdfs.append(gdf)
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
@@ -269,6 +273,69 @@ class DataClient():
         print("Fetching data from CDS...")
         return self._convert_precipitation(self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['total_precipitation'], bbox, time_range, daily_statistic="daily_sum"), "m", "mm")
     
+    def gmst(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+        """
+        Fetches global mean surface temperature data for a given bounding box and time range.
+
+        # Parameters:
+        - bbox: A tuple of (min_longitude, min_latitude, max_longitude, max_latitude).
+        - time_range: A tuple of (start_time, end_time) as datetime objects. Inclusive range.
+
+        # Returns:
+        - A pandas DataFrame containing the global mean surface temperature data.
+        """
+        # Implementation will go here
+        min_retrieved_time = None
+        max_retrieved_time = None
+        gdfs = []
+
+        # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
+        if self.beacon_cache:
+            print("Fetching gmst data from beacon cache...")
+            gdf = self.beacon_cache._fetch_from_era5_monthly_zarr(bbox=bbox, time_range=time_range, variable='t2m')
+            if not gdf.empty:
+                gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
+                # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
+                min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
+                max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
+                gdfs.append(gdf)
+
+        if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
+            # No valid data found in beacon cache or we are missing data for the requested time range
+            print("Missing gmst data in beacon cache, fetching missing gmst data from CDS...")
+            
+            if min_retrieved_time is None or min_retrieved_time > time_range[0]:
+                # Request missing data from CDS
+                fetch_start = time_range[0]
+                fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
+                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
+                gdf = self.cds_client._fetch_data_monthly_averaged('2m_temperature', bbox, (fetch_start, fetch_end))
+                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
+                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
+                print(f"Fetched {len(gdf)} new records from CDS.")
+                gdfs.append(gdf)
+                
+            if max_retrieved_time is None or max_retrieved_time < time_range[1]:
+                # Request missing data from CDS
+                fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
+                fetch_end = time_range[1]
+                print(f"Re-Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
+                gdf = self.cds_client._fetch_data_monthly_averaged('2m_temperature', bbox, (fetch_start, fetch_end))
+                
+                # Only retain data that is newer than max_retrieved_time
+                gdf = gdf[gdf['valid_time'] > max_retrieved_time] if max_retrieved_time is not None else gdf
+                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
+                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
+                print(f"Fetched {len(gdf)} new records from re-requesting CDS.")
+                gdfs.append(gdf)
+
+        # Concatenate all GeoDataFrames
+        final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
+        
+        final_gdf = self._convert_temp(final_gdf, from_unit, to_unit)
+        
+        return final_gdf
+    
     def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
         
         parameter = parameter.lower()
@@ -319,6 +386,46 @@ class CDSClient():
             current_start = datetime(year=current_start.year + 1, month=1, day=1)
         ranges.append((current_start, end))
         return ranges
+    
+    def _build_request_monthly_averaged(self, variable: str, time_range: tuple[datetime, datetime], bbox: tuple[float, float, float, float]) -> dict:
+        start_dt, end_dt = time_range
+        # convert to pandas Timestamp for range generation
+        start = pd.Timestamp(start_dt)
+        end = pd.Timestamp(end_dt)
+        dates = pd.date_range(start=start, end=end, freq='MS')
+
+        years = sorted({d.strftime('%Y') for d in dates})
+        months = sorted({d.strftime('%m') for d in dates})
+
+        request = {
+            "product_type": "monthly_averaged_reanalysis",
+            "variable": [variable],
+            "year": years,
+            "month": months,
+            "time": ["00:00"],
+            "data_format": "netcdf",
+            "download_format": "unarchived",
+            "area": [bbox[3], bbox[0], bbox[1], bbox[2]],  # CDS expects [north, west, south, east]
+        }
+        return request
+    
+    def _fetch_data_monthly_averaged(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
+        dataset = "reanalysis-era5-single-levels-monthly-means"
+        
+        req = self._build_request_monthly_averaged(variable, time_range, bbox)
+        with tempfile.NamedTemporaryFile(suffix='.nc') as tmp:
+            self.cds_client.retrieve(
+                dataset,
+                req
+            ).download(target=tmp.name)
+            # open dataset
+            ds = xr.open_dataset(tmp.name)
+            # convert entire dataset to DataFrame
+            df = ds.to_dataframe().reset_index()
+            # create geometry
+            df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+            gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+            return gdf
     
     def _build_request_pressure_levels(self, variables: list[str], bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], levels: list[int], daily_statistic: str = "daily_mean") -> dict:
         start_dt, end_dt = time_range
@@ -479,8 +586,36 @@ class BeaconDataClient():
         
         # Do a check for connecting to the Beacon Cache Layer
         self.beacon_client.check_status()
+        
+    def _fetch_from_era5_monthly_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
+        """
+        Fetch data from ERA5 Monthly Zarr dataset in Beacon Cache.
+        Parameters
+        ----------
+        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
+        time_range : tuple (start_datetime, end_datetime)
+        variable : str, variable name to fetch. Available: ['t2m', 'total_precipitation']
+        Returns
+        -------
+        GeoDataFrame with data
+        """
+        
+        era5_table = self.beacon_client.list_tables()['era5_monthly_zarr']
+        query = (era5_table.query()
+                 .add_select_column('longitude')
+                 .add_select_column('latitude')
+                 .add_select_column('valid_time')
+                 .add_select_column(variable)
+                 .add_bbox_filter('longitude','latitude', bbox)
+                 .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
 
-    def _fetch_from_era5_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
+        df = query.to_pandas_dataframe()
+        if df.empty:
+            return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time'], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
+
+        return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
+
+    def _fetch_from_era5_daily_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
         """
         Fetch data from ERA5 Zarr dataset in Beacon Cache.
 
@@ -494,7 +629,7 @@ class BeaconDataClient():
         -------
         GeoDataFrame with data
         """
-        era5_table = self.beacon_client.list_tables()['era5_zarr']
+        era5_table = self.beacon_client.list_tables()['daily']
         query = (era5_table.query()
                  .add_select_column('longitude')
                  .add_select_column('latitude')
@@ -504,6 +639,10 @@ class BeaconDataClient():
                  .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
 
         df = query.to_pandas_dataframe()
+        
+        # Wrap longitude values to -180 to 180
+        df['longitude'] = (df['longitude'] + 180) % 360 - 180
+        
         if df.empty:
             return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time'], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
 
@@ -806,3 +945,5 @@ class MarsClient():
 class CordexClient():
     def __init__(self):
         pass
+    
+    
