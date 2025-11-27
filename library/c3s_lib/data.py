@@ -100,7 +100,11 @@ class DataClient():
         
         return df
     
-    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+    def last_day_of_month(self, dt: datetime) -> datetime:
+        next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
+        return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
+    
+    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches minimum temperature data for a given bounding box and time range.
 
@@ -123,7 +127,7 @@ class DataClient():
             
             for beacon_bbox in adjusted_bboxes:
                 print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m_min')
+                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m_min', months=months)
                 if not gdf.empty:
                     gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                     # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -189,7 +193,7 @@ class DataClient():
 
         return df
 
-    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches maximum temperature data for a given bounding box and time range.
 
@@ -213,7 +217,7 @@ class DataClient():
             
             for beacon_bbox in adjusted_bboxes:
                 print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m_max')
+                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m_max', months=months)
                 if not gdf.empty:
                     gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                     # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -368,7 +372,7 @@ class DataClient():
 
         return df
     
-    def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "m", to_unit:str = "mm") -> gpd.GeoDataFrame:
+    def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str = "m", to_unit:str = "mm") -> gpd.GeoDataFrame:
         """
         Fetches precipitation data for a given bounding box and time range.
         # Parameters:
@@ -391,7 +395,7 @@ class DataClient():
             
             for beacon_bbox in adjusted_bboxes:
                 print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='total_precipitation')
+                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='total_precipitation', months=months)
                 if not gdf.empty:
                     gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                     # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -524,14 +528,54 @@ class DataClient():
         
         parameter = parameter.lower()
 
+        month_map = {
+            "jan": 1,  "january": 1,
+            "feb": 2,  "february": 2,
+            "mar": 3,  "march": 3,
+            "apr": 4,  "april": 4,
+            "may": 5,
+            "jun": 6,  "june": 6,
+            "jul": 7,  "july": 7,
+            "aug": 8,  "august": 8,
+            "sep": 9,  "sept": 9, "september": 9,
+            "oct": 10, "october": 10,
+            "nov": 11, "november": 11,
+            "dec": 12, "december": 12,
+        }
+
         # Build kwargs only if explicitly set
         unit_kwargs = {}
         if from_unit is not None:
             unit_kwargs["from_unit"] = from_unit
         if to_unit is not None:
             unit_kwargs["to_unit"] = to_unit
+
+        allowed_months: set[int] = set()
         if months is not None:
-            unit_kwargs["months"] = months
+
+            # Normalize months → integers 1–12
+            for m in months:
+                if isinstance(m, int):
+                    if 1 <= m <= 12:
+                        allowed_months.add(m)
+                    else:
+                        raise ValueError(f"Invalid month integer: {m}")
+                elif isinstance(m, str):
+                    m_lower = m.lower()
+                    if m_lower in month_map:
+                        allowed_months.add(month_map[m_lower])
+                    else:
+                        raise ValueError(f"Invalid month string: {m}")
+                else:
+                    raise ValueError(f"Month must be int or str, got: {type(m)}")
+                
+            # add months variable to kwargs
+            unit_kwargs["months"] = allowed_months
+
+            # adjust time range for checking beacon cache
+            start = max(time_range[0], datetime(year=time_range[0].year, month=min(allowed_months), day=1))
+            end = min(time_range[1], self.last_day_of_month(dt=datetime(year=time_range[1].year, month=max(allowed_months), day=1)))
+            time_range = (start, end)
 
         match parameter:
             case 'tmean':
@@ -799,39 +843,6 @@ class BeaconDataClient():
             end: datetime,
             months: list[str]|list[int]
         ) -> list[tuple[datetime, datetime]]:
-
-        # Mapping month names → numbers
-        month_map = {
-            "jan": 1,  "january": 1,
-            "feb": 2,  "february": 2,
-            "mar": 3,  "march": 3,
-            "apr": 4,  "april": 4,
-            "may": 5,
-            "jun": 6,  "june": 6,
-            "jul": 7,  "july": 7,
-            "aug": 8,  "august": 8,
-            "sep": 9,  "sept": 9, "september": 9,
-            "oct": 10, "october": 10,
-            "nov": 11, "november": 11,
-            "dec": 12, "december": 12,
-        }
-
-        # Normalize months → integers 1–12
-        allowed_months: set[int] = set()
-        for m in months:
-            if isinstance(m, int):
-                if 1 <= m <= 12:
-                    allowed_months.add(m)
-                else:
-                    raise ValueError(f"Invalid month integer: {m}")
-            elif isinstance(m, str):
-                m_lower = m.lower()
-                if m_lower in month_map:
-                    allowed_months.add(month_map[m_lower])
-                else:
-                    raise ValueError(f"Invalid month string: {m}")
-            else:
-                raise ValueError(f"Month must be int or str, got: {type(m)}")
         
         result = []
 
@@ -842,7 +853,7 @@ class BeaconDataClient():
         current = datetime(start.year, start.month, start.day)
 
         while current <= end:
-            if current.month in allowed_months:
+            if current.month in months:
                 month_start = current
                 month_end = last_day_of_month(current)
 
