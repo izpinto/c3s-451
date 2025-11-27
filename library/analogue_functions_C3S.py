@@ -42,7 +42,8 @@ def reanalysis_file_location() -> str:
     #CEX path 
     #return os.path.join(os.environ["CLIMEXP_DATA"],"ERA5")
     #local wrkstation path 
-    return '/net/pc230042/nobackup/users/sager/nobackup_2_old/ERA5-CX-READY/'
+    # return '/net/pc230042/nobackup/users/sager/nobackup_2_old/ERA5-CX-READY/'
+    return ''
     
 
 def find_reanalysis_filename(var : str, daily : bool = True) -> str:

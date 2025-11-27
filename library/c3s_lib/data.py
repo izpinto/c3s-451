@@ -284,7 +284,7 @@ class DataClient():
     def z500_geopotential_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         return self.cds_client._fetch_data_pressure_levels("derived-era5-pressure-levels-daily-statistics", ['geopotential'], bbox, time_range, levels=[500], daily_statistic="daily_mean")
 
-    def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+    def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches mean temperature data for a given bounding box and time range.
 
@@ -307,7 +307,7 @@ class DataClient():
             
             for beacon_bbox in adjusted_bboxes:
                 print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m')
+                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m', months=months)
                 if not gdf.empty:
                     gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                     # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -520,7 +520,7 @@ class DataClient():
         
         return final_gdf
     
-    def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
+    def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
         
         parameter = parameter.lower()
 
@@ -530,6 +530,8 @@ class DataClient():
             unit_kwargs["from_unit"] = from_unit
         if to_unit is not None:
             unit_kwargs["to_unit"] = to_unit
+        if months is not None:
+            unit_kwargs["months"] = months
 
         match parameter:
             case 'tmean':
@@ -770,6 +772,94 @@ class BeaconDataClient():
         
         # Do a check for connecting to the Beacon Cache Layer
         self.beacon_client.check_status()
+
+    # copied for CDSClient so not the best practice but quick solution
+    def _split_time_range_by_year(
+        self,
+        start: datetime,
+        end: datetime
+    ) -> list[tuple[datetime, datetime]]:
+        """
+        Split a time range into sub-ranges, each within a single calendar year.
+        """
+        ranges = []
+        current_start = start
+        # iterate until within same year as end
+        while current_start.year < end.year:
+            year_end = datetime(year=current_start.year, month=12, day=31)
+            ranges.append((current_start, year_end))
+            current_start = datetime(year=current_start.year + 1, month=1, day=1)
+        ranges.append((current_start, end))
+        return ranges
+
+
+    def _split_time_rangbe_by_year_and_months(
+            self,
+            start: datetime,
+            end: datetime,
+            months: list[str]|list[int]
+        ) -> list[tuple[datetime, datetime]]:
+
+        # Mapping month names → numbers
+        month_map = {
+            "jan": 1,  "january": 1,
+            "feb": 2,  "february": 2,
+            "mar": 3,  "march": 3,
+            "apr": 4,  "april": 4,
+            "may": 5,
+            "jun": 6,  "june": 6,
+            "jul": 7,  "july": 7,
+            "aug": 8,  "august": 8,
+            "sep": 9,  "sept": 9, "september": 9,
+            "oct": 10, "october": 10,
+            "nov": 11, "november": 11,
+            "dec": 12, "december": 12,
+        }
+
+        # Normalize months → integers 1–12
+        allowed_months: set[int] = set()
+        for m in months:
+            if isinstance(m, int):
+                if 1 <= m <= 12:
+                    allowed_months.add(m)
+                else:
+                    raise ValueError(f"Invalid month integer: {m}")
+            elif isinstance(m, str):
+                m_lower = m.lower()
+                if m_lower in month_map:
+                    allowed_months.add(month_map[m_lower])
+                else:
+                    raise ValueError(f"Invalid month string: {m}")
+            else:
+                raise ValueError(f"Month must be int or str, got: {type(m)}")
+        
+        result = []
+
+        def last_day_of_month(dt: datetime) -> datetime:
+            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
+            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
+        
+        current = datetime(start.year, start.month, start.day)
+
+        while current <= end:
+            if current.month in allowed_months:
+                month_start = current
+                month_end = last_day_of_month(current)
+
+                actual_start = max(month_start, start)
+                actual_end = min(month_end, end)
+
+                if actual_start <= actual_end:
+                    result.append((actual_start, actual_end))
+                
+            if current.month == 12:
+                current = datetime(current.year + 1, 1, 1)
+            else:
+                current = datetime(current.year, current.month + 1, 1)
+        
+        return result
+
+    
         
     def _fetch_from_era5_monthly_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
         """
@@ -783,7 +873,7 @@ class BeaconDataClient():
         -------
         GeoDataFrame with data
         """
-        
+
         era5_table = self.beacon_client.list_tables()['era5_monthly_zarr']
         query = (era5_table.query()
                  .add_select_column('longitude')
@@ -799,7 +889,7 @@ class BeaconDataClient():
 
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
 
-    def _fetch_from_era5_daily_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
+    def _fetch_from_era5_daily_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, months:list[str]|list[int]|None=None) -> gpd.GeoDataFrame:
         """
         Fetch data from ERA5 Zarr dataset in Beacon Cache.
 
@@ -814,15 +904,39 @@ class BeaconDataClient():
         GeoDataFrame with data
         """
         era5_table = self.beacon_client.list_tables()['daily']
-        query = (era5_table.query()
-                 .add_select_column('longitude')
-                 .add_select_column('latitude')
-                 .add_select_column('valid_time')
-                 .add_select_column(variable)
-                 .add_bbox_filter('longitude','latitude', bbox)
-                 .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
 
-        df = query.to_pandas_dataframe()
+        # do a lopedy loop loop for the months
+        if months is not None and len(months) < 12:
+            ranges = self._split_time_rangbe_by_year_and_months(start=time_range[0], end=time_range[1], months=months)
+            gdfs = []
+            for start_dt, end_dt in ranges:
+                #do something
+                print(start_dt, end_dt)
+                query = (era5_table.query()
+                     .add_select_column('longitude')
+                     .add_select_column('latitude')
+                     .add_select_column('valid_time')
+                     .add_select_column(variable)
+                     .add_bbox_filter('longitude','latitude', bbox)
+                     .add_range_filter('valid_time', gt_eq=start_dt, lt_eq=end_dt))
+
+                df = query.to_pandas_dataframe()
+                if not df.empty:
+                    gdfs.append(df)
+
+            df = pd.concat(gdfs, ignore_index=True)
+
+        else:
+            # era5_table = self.beacon_client.list_tables()['daily']
+            query = (era5_table.query()
+                     .add_select_column('longitude')
+                     .add_select_column('latitude')
+                     .add_select_column('valid_time')
+                     .add_select_column(variable)
+                     .add_bbox_filter('longitude','latitude', bbox)
+                     .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
+
+            df = query.to_pandas_dataframe()
         
         # Wrap longitude values to -180 to 180
         df['longitude'] = (df['longitude'] + 180) % 360 - 180

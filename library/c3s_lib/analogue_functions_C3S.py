@@ -26,6 +26,7 @@ import calendar
 import random
 import numpy.ma as ma
 import matplotlib.pyplot as plt
+import iris.analysis
 
 
 import warnings
@@ -429,7 +430,7 @@ def diff_significance(field1, dates1, field2, dates2):
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     u, p = stats.ttest_ind(loc_list1, loc_list2, equal_var=False, alternative='two-sided')
-            if p < 0.05: 
+            if p < 0.05:
                 sig_field[i,j] = 1
             else:
                 sig_field[i,j] = 0
@@ -535,3 +536,12 @@ def plot_box(axs, bdry):
     axs.plot([bdry[3], bdry[3]], [bdry[1], bdry[0]],'k')
     axs.plot([bdry[2], bdry[2]], [bdry[1], bdry[0]],'k')
     return
+
+def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPHERICAL_EARTH_RADIUS):
+    '''
+    This is used to prevent warnings that no coordinate system defined
+    Defaults to DEFAULT_SPHERICAL_EARTH_RADIUS
+    '''
+    cube.coord('latitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
+    cube.coord('longitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
+    return cube
