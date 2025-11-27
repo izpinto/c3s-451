@@ -88,3 +88,5 @@ pylint-output.txt
 
 library/mars.ipynb
 ecmwf.ipynb
+
+*.nc:Zone.Identifier
