@@ -104,6 +104,27 @@ class DataClient():
         next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
         return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
     
+    def get_beacon_cache(self, gdfs, bbox, time_range, months, var, var_to, table):
+        print("Fetching data from beacon cache...")
+        adjusted_bboxes = self._bbox_to_0_360(bbox)
+        
+        for beacon_bbox in adjusted_bboxes:
+            print("Beacon Bbox: "+  str(beacon_bbox))
+            gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable=var, months=months, table=table)
+            if not gdf.empty:
+                gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
+                # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
+                min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
+                max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
+                
+                # Rename t2m_min to t2m for consistency
+                gdf = gdf.rename(columns={var: var_to})
+                
+                gdfs.append(gdf)
+        
+        return gdfs, min_retrieved_time, max_retrieved_time
+    
+    
     def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
         Fetches minimum temperature data for a given bounding box and time range.
@@ -122,22 +143,7 @@ class DataClient():
         
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            print("Fetching data from beacon cache...")
-            adjusted_bboxes = self._bbox_to_0_360(bbox)
-            
-            for beacon_bbox in adjusted_bboxes:
-                print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m_min', months=months)
-                if not gdf.empty:
-                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
-                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
-                    min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
-                    max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
-                    
-                    # Rename t2m_min to t2m for consistency
-                    gdf = gdf.rename(columns={"t2m_min": "t2m"})
-                    
-                    gdfs.append(gdf)
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='t2m_min', var_to='t2m', table='daily')
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
@@ -212,22 +218,7 @@ class DataClient():
 
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            print("Fetching data from beacon cache...")
-            adjusted_bboxes = self._bbox_to_0_360(bbox)
-            
-            for beacon_bbox in adjusted_bboxes:
-                print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m_max', months=months)
-                if not gdf.empty:
-                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
-                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
-                    min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
-                    max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
-                    
-                    # Rename t2m_max to t2m for consistency
-                    gdf = gdf.rename(columns={"t2m_max": "t2m"})
-                    
-                    gdfs.append(gdf)
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='t2m_max', var_to='t2m', table='daily')
                     
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
@@ -306,18 +297,7 @@ class DataClient():
         
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            print("Fetching data from beacon cache...")
-            adjusted_bboxes = self._bbox_to_0_360(bbox)
-            
-            for beacon_bbox in adjusted_bboxes:
-                print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='t2m', months=months)
-                if not gdf.empty:
-                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
-                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
-                    min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
-                    max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
-                    gdfs.append(gdf)
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='t2m', var_to='t2m', table='daily')
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
@@ -390,22 +370,7 @@ class DataClient():
         
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            print("Fetching data from beacon cache...")
-            adjusted_bboxes = self._bbox_to_0_360(bbox)
-            
-            for beacon_bbox in adjusted_bboxes:
-                print("Beacon Bbox: "+  str(beacon_bbox))
-                gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable='total_precipitation', months=months)
-                if not gdf.empty:
-                    gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
-                    # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
-                    min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
-                    max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
-                    
-                    # Rename total_precipitation to tp for consistency
-                    gdf = gdf.rename(columns={"total_precipitation": "tp"})
-                    
-                    gdfs.append(gdf)
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='total_precipitation', var_to='tp', table='daily')
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
