@@ -900,7 +900,7 @@ class BeaconDataClient():
 
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
 
-    def _fetch_from_era5_daily_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, months:list[str]|list[int]|None=None) -> gpd.GeoDataFrame:
+    def _fetch_from_era5_daily_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, months:list[str]|list[int]|None=None, table:str='daily') -> gpd.GeoDataFrame:
         """
         Fetch data from ERA5 Zarr dataset in Beacon Cache.
 
@@ -914,7 +914,7 @@ class BeaconDataClient():
         -------
         GeoDataFrame with data
         """
-        era5_table = self.beacon_client.list_tables()['daily']
+        era5_table = self.beacon_client.list_tables()[table]
 
         # do a lopedy loop loop for the months
         if months is not None and len(months) < 12:

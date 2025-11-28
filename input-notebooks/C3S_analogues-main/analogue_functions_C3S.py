@@ -545,3 +545,32 @@ def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPH
     cube.coord('latitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
     cube.coord('longitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
     return cube
+
+
+
+# MARIS added functions
+# most of these are repeated functions in the analogues
+
+from datetime import datetime
+
+def analogue_months(event_date:datetime|list) -> list:
+    '''
+    return the months surrounding the event month
+    '''
+    
+    X = list(calendar.month_abbr)
+    i = event_date.month | X.index(event_date[1])
+    if 1<i<12:
+        months = [X[i-1], X[i], X[i+1]]
+    elif i == 1:
+        months = [X[12], X[i], X[i+1]]
+    elif i ==12:
+        months = [X[i-1], X[i], X[1]]
+
+    return months
+
+def number_of_analogues(Y1:int, Y2:int, months:list) -> int:
+    '''
+    return the number of analogues in period Y1 to Y2 for the months given
+    '''
+    return int(((Y2-Y1)*len(months)*30)/100)
