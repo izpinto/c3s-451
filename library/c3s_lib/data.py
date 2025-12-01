@@ -107,8 +107,7 @@ class DataClient():
     def get_beacon_cache(self, gdfs:list[gpd.GeoDataFrame],
                          bbox:tuple[float, float, float, float],
                          time_range:tuple[datetime, datetime],
-                         months:list[int]|None, var:str,
-                         var_to:str, table:str,
+                         var:str, var_to:str, table:str, months:list[int]|None=None,
                          min_retrieved_time=None, max_retrieved_time=None):
         
         print("Fetching data from beacon cache...")
@@ -133,11 +132,11 @@ class DataClient():
     def get_cds_data(self, gdfs:list[gpd.GeoDataFrame],
                      bbox:tuple[float, float, float, float],
                      time_range:tuple[datetime, datetime],
-                     months:list[int]|None, var:str, statistic:str,
+                     var:str, statistic:str, months:list[int]|None=None,
                      min_retrieved_time=None, max_retrieved_time=None):
 
         print(f"Requesting missing data from CDS for range: {time_range[0]} - {time_range[1]}")
-        gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", [statistic], bbox, time_range=time_range, daily_statistic=var)
+        gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", [statistic], bbox, time_range=time_range, daily_statistic=var, months=months)
         min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
         max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
         gdfs.append(gdf)
@@ -192,11 +191,13 @@ class DataClient():
         - A pandas DataFrame containing the minimum temperature data.
         """
         # Implementation will go here
+        min_retrieved_time = None
+        max_retrieved_time = None
         gdfs = []
         
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='t2m_min', var_to='t2m', table='daily')
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='t2m_min', var_to='t2m', table='daily')
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
@@ -206,14 +207,14 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_min', statistic='2m_temperature',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_min', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_min', statistic='2m_temperature',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_min', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
                 
                 
@@ -247,12 +248,13 @@ class DataClient():
         - A pandas DataFrame containing the maximum temperature data.
         """
         # Implementation will go here
+        min_retrieved_time = None
+        max_retrieved_time = None
         gdfs = []
-        
 
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='t2m_max', var_to='t2m', table='daily')
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='t2m_max', var_to='t2m', table='daily')
                     
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
@@ -263,14 +265,14 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_max', statistic='2m_temperature',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_max', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_max', statistic='2m_temperature',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_max', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
 
                 
@@ -308,12 +310,13 @@ class DataClient():
         # Returns:
         - A pandas DataFrame containing the mean temperature data.
         """
-        
+        min_retrieved_time = None
+        max_retrieved_time = None
         gdfs = []
         
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='t2m', var_to='t2m', table='daily')
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='t2m', var_to='t2m', table='daily')
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
@@ -323,14 +326,14 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_mean', statistic='2m_temperature',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_mean', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_mean', statistic='2m_temperature',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_mean', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
 
                 
@@ -364,11 +367,13 @@ class DataClient():
         - precipitation is in L/m^2/day
         """
         # Implementation will go here
+        min_retrieved_time = None
+        max_retrieved_time = None
         gdfs = []
         
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
-            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months, var='total_precipitation', var_to='tp', table='daily')
+            gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='total_precipitation', var_to='tp', table='daily')
                     
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
@@ -378,14 +383,14 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_sum', statistic='tp',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_sum', statistic='tp',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_sum', statistic='tp',
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_sum', statistic='tp',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
                     
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
@@ -563,6 +568,39 @@ class CDSClient():
         ranges.append((current_start, end))
         return ranges
     
+    def _split_time_rangbe_by_year_and_months(
+        self,
+        start: datetime,
+        end: datetime,
+        months: list[str]|list[int]
+    ) -> list[tuple[datetime, datetime]]:
+    
+        result = []
+
+        def last_day_of_month(dt: datetime) -> datetime:
+            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
+            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
+        
+        current = datetime(start.year, start.month, start.day)
+
+        while current <= end:
+            if current.month in months:
+                month_start = current
+                month_end = last_day_of_month(current)
+
+                actual_start = max(month_start, start)
+                actual_end = min(month_end, end)
+
+                if actual_start <= actual_end:
+                    result.append((actual_start, actual_end))
+                
+            if current.month == 12:
+                current = datetime(current.year + 1, 1, 1)
+            else:
+                current = datetime(current.year, current.month + 1, 1)
+        
+        return result
+    
     def _build_request_monthly_averaged(self, variable: str, time_range: tuple[datetime, datetime], bbox: tuple[float, float, float, float]) -> dict:
         start_dt, end_dt = time_range
         # convert to pandas Timestamp for range generation
@@ -682,9 +720,9 @@ class CDSClient():
         straight to a pandas DataFrame, then to a GeoDataFrame.
         Returns a list of GeoDataFrames, one per year.
         """
-        yearly_ranges = self._split_time_range_by_year(*time_range)
+        ranges = self._split_time_range_by_year(*time_range)
         gdfs = []
-        for start_dt, end_dt in yearly_ranges:
+        for start_dt, end_dt in ranges:
             req = self._build_request_pressure_levels(variables, bbox, (start_dt, end_dt), levels, daily_statistic=daily_statistic)
             with tempfile.NamedTemporaryFile(suffix='.nc') as tmp:
                 self.cds_client.retrieve(
@@ -713,7 +751,8 @@ class CDSClient():
         variables: list[str],
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
-        daily_statistic: str = "daily_mean"
+        daily_statistic: str = "daily_mean",
+        months: list[int]|None = None
     ) -> gpd.GeoDataFrame:
         """
         Fetch data from CDS API for given variables and bbox, splitting by year.
@@ -721,9 +760,12 @@ class CDSClient():
         straight to a pandas DataFrame, then to a GeoDataFrame.
         Returns a list of GeoDataFrames, one per year.
         """
-        yearly_ranges = self._split_time_range_by_year(*time_range)
+        ranges = self._split_time_rangbe_by_year_and_months(time_range[0], time_range[1], months) if months is not None else self._split_time_range_by_year(*time_range)
+        min_start = min(t[0] for t in ranges)
+        max_end = max(t[1] for t in ranges)
+
         gdfs = []
-        for start_dt, end_dt in yearly_ranges:
+        for start_dt, end_dt in ranges:
             req = self._build_request_single_levels(variables, bbox, (start_dt, end_dt), daily_statistic=daily_statistic)
             with tempfile.NamedTemporaryFile(suffix='.nc') as tmp:
                 self.cds_client.retrieve(
@@ -745,7 +787,7 @@ class CDSClient():
         combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
 
         # filter on given time range instead of taking the entire month
-        combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= start_dt) & (combined_gdf['valid_time'] <= end_dt)]
+        combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= min_start) & (combined_gdf['valid_time'] <= max_end)]
 
         return combined_gdf
     
@@ -868,7 +910,6 @@ class BeaconDataClient():
             gdfs = []
             for start_dt, end_dt in ranges:
                 #do something
-                print(start_dt, end_dt)
                 query = (era5_table.query()
                      .add_select_column('longitude')
                      .add_select_column('latitude')
@@ -876,10 +917,13 @@ class BeaconDataClient():
                      .add_select_column(variable)
                      .add_bbox_filter('longitude','latitude', bbox)
                      .add_range_filter('valid_time', gt_eq=start_dt, lt_eq=end_dt))
-
-                df = query.to_pandas_dataframe()
-                if not df.empty:
-                    gdfs.append(df)
+                try:
+                    df = query.to_pandas_dataframe()
+                    if not df.empty:
+                        gdfs.append(df)
+                except Exception as e:
+                    print (e)
+                    continue
 
             df = pd.concat(gdfs, ignore_index=True)
 
