@@ -104,9 +104,17 @@ class DataClient():
         next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
         return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
     
-    def get_beacon_cache(self, gdfs, bbox, time_range, months, var, var_to, table):
+    def get_beacon_cache(self, gdfs:list[gpd.GeoDataFrame],
+                         bbox:tuple[float, float, float, float],
+                         time_range:tuple[datetime, datetime],
+                         months:list[int]|None, var:str,
+                         var_to:str, table:str):
+        
         print("Fetching data from beacon cache...")
         adjusted_bboxes = self._bbox_to_0_360(bbox)
+
+        min_retrieved_time = None
+        max_retrieved_time = None
         
         for beacon_bbox in adjusted_bboxes:
             print("Beacon Bbox: "+  str(beacon_bbox))
@@ -122,6 +130,22 @@ class DataClient():
                 
                 gdfs.append(gdf)
         
+        return gdfs, min_retrieved_time, max_retrieved_time
+    
+    def get_cds_data(self, gdfs:list[gpd.GeoDataFrame],
+                     bbox:tuple[float, float, float, float],
+                     time_range:tuple[datetime, datetime],
+                     months:list[int]|None, var:str, statistic:str):
+
+        min_retrieved_time = None
+        max_retrieved_time = None
+
+        print(f"Requesting missing data from CDS for range: {time_range[0]} - {time_range[1]}")
+        gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", [statistic], bbox, time_range=time_range, daily_statistic=var)
+        min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
+        max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
+        gdfs.append(gdf)
+
         return gdfs, min_retrieved_time, max_retrieved_time
     
     
@@ -153,21 +177,13 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_min");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_min', statistic='2m_temperature')
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_min");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_min', statistic='2m_temperature')
                 
                 
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
@@ -229,21 +245,14 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_max");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_max', statistic='2m_temperature')
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_max");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_max', statistic='2m_temperature')
+
                 
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
@@ -307,21 +316,14 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_mean");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_mean', statistic='2m_temperature')
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['2m_temperature'], bbox, (fetch_start, fetch_end), daily_statistic="daily_mean");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_mean', statistic='2m_temperature')
+
                 
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
@@ -380,21 +382,13 @@ class DataClient():
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['tp'], bbox, (fetch_start, fetch_end), daily_statistic="daily_sum");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_sum', statistic='tp')
                 
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
-                print(f"Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
-                gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['tp'], bbox, (fetch_start, fetch_end), daily_statistic="daily_sum");
-                min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
-                max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-                gdfs.append(gdf)
+                gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months, var='daily_sum', statistic='tp')
                     
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
