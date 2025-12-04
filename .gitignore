@@ -90,3 +90,5 @@ library/mars.ipynb
 ecmwf.ipynb
 
 *.nc:Zone.Identifier
+
+*.pyc

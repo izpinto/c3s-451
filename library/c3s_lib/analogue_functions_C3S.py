@@ -202,8 +202,6 @@ def anomaly_period_outputs(Y1, Y2, ana_var, N, date, months, R1):
     return P1_dates
 
 
-
-
 def cube_date(cube):
     '''
     Returns date of cube (assumes cube single day)
@@ -550,6 +548,7 @@ def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPH
 # most of these are repeated functions in the analogues
 
 from datetime import datetime
+# from iris.util import mask_cube_from_shape
 
 def analogue_months(event_date:str|int) -> list:
     '''
@@ -572,3 +571,60 @@ def number_of_analogues(Y1:int, Y2:int, months:list) -> int:
     return the number of analogues in period Y1 to Y2 for the months given
     '''
     return int(((Y2-Y1)*len(months)*30)/100)
+
+def find_reanalysis_filename_v2(var : str, daily : bool = True) -> str:
+    '''
+    Return the field filename for a given variable
+    '''
+    suffix : str = ERA5FILESUFFIX
+    path : str = os.path.join("", "era5_{0}{1}.nc".format(var,suffix))
+    return path
+
+def reanalysis_data_v2(var, Y1=1950, Y2=2023, months='[Jan]'):
+    '''
+    Loads in reanalysis daily data
+    VAR can be psi250, msl, or tp (to add more)
+    '''
+    cubes = iris.load(find_reanalysis_filename_v2(var), var)
+    try:
+        cube = cubes[0]
+    except:
+        print("Error reading cubes for %s", var)
+        raise FileNotFoundError
+    iris.coord_categorisation.add_year(cube, 'time')
+    cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
+    iris.coord_categorisation.add_month(cube, 'time')
+    cube = cube.extract(iris.Constraint(month=months))
+    return cube
+
+def reanalysis_data_single_date_v2(var : str, date : list):
+    '''
+    Loads in reanalysis daily data
+    VAR can be: msl, or tp (to add more)
+    '''
+    filename = find_reanalysis_filename_v2(var)
+    print("Read file: {} for date {}".format(filename,date))
+    cube = iris.load(filename, var)[0]
+    cube = extract_date(cube,date[0],date[1],date[2])
+    return cube
+
+def extract_region_shape(cube, shape):
+    '''
+    Extract Region using a shape (e.g. shapefile)
+    '''
+    masked_cube = iris.util.mask_cube_from_shape(cube=cube, shape=shape)
+    return masked_cube
+
+def event_data_era_v2(event_data, date: list, ana_var: str) -> list:
+    '''
+    Get ERA data for a defined list of variables on a given event date
+    '''
+    event_list = []
+    # TODO: Convert variable list into a non-local (possibly with a class?)
+    if event_data == 'extended':
+        for variable in [ana_var, 'tp', 't2m', 't2m']:
+            event_list.append(reanalysis_data_single_date_v2(variable, date))
+    else:
+        for variable in [ana_var, 'tp', 't2m', 'sfcWind']:
+            event_list.append(reanalysis_data_single_date_v2(variable, date))
+    return event_list
