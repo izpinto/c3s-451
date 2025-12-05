@@ -544,6 +544,9 @@ def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPH
     cube.coord('longitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
     return cube
 
+
+
+
 # MARIS added functions
 # most of these are repeated functions in the analogues
 
@@ -561,7 +564,7 @@ def analogue_months(event_date:str|int) -> list:
         months = [X[i-1], X[i], X[i+1]]
     elif i == 1:
         months = [X[12], X[i], X[i+1]]
-    elif i ==12:
+    elif i == 12:
         months = [X[i-1], X[i], X[1]]
 
     return months
@@ -628,3 +631,11 @@ def event_data_era_v2(event_data, date: list, ana_var: str) -> list:
         for variable in [ana_var, 'tp', 't2m', 'sfcWind']:
             event_list.append(reanalysis_data_single_date_v2(variable, date))
     return event_list
+
+def extract_year(cube, Y1, Y2):
+
+    if not any(coord.name() == "year" for coord in cube.coords()):
+        iris.coord_categorisation.add_year(cube, 'time')
+    
+    # is this excluding Y2?
+    return cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
