@@ -26,6 +26,7 @@ import calendar
 import random
 import numpy.ma as ma
 import matplotlib.pyplot as plt
+import iris.analysis
 
 
 import warnings
@@ -535,3 +536,12 @@ def plot_box(axs, bdry):
     axs.plot([bdry[3], bdry[3]], [bdry[1], bdry[0]],'k')
     axs.plot([bdry[2], bdry[2]], [bdry[1], bdry[0]],'k')
     return
+
+def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPHERICAL_EARTH_RADIUS):
+    '''
+    This is used to prevent warnings that no coordinate system defined
+    Defaults to DEFAULT_SPHERICAL_EARTH_RADIUS
+    '''
+    cube.coord('latitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
+    cube.coord('longitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
+    return cube
