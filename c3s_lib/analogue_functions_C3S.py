@@ -546,9 +546,13 @@ def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPH
 
 
 
-
+######################################################################################
 # MARIS added functions
 # most of these are repeated functions in the analogues
+######################################################################################
+
+# Analogue rewrites
+######################################################################################
 
 from datetime import datetime
 # from iris.util import mask_cube_from_shape
@@ -640,3 +644,34 @@ def extract_year(cube, Y1, Y2):
 
     rCube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
     return rCube
+
+def extract_date_v2(cube, date):
+    '''
+    Extract specific day from cube of a single year
+    '''
+
+    yr = date[0]
+    mon = date[1]
+    day = date[2]
+
+    if len(cube.coords('year')) > 0:
+        pass
+    else:
+        iris.coord_categorisation.add_year(cube, 'time')
+    if len(cube.coords('month')) > 0:
+        pass
+    else:
+        iris.coord_categorisation.add_month(cube, 'time')
+    if len(cube.coords('day_of_month')) > 0:
+        pass
+    else:
+        iris.coord_categorisation.add_day_of_month(cube, 'time')
+    return cube.extract(iris.Constraint(year=yr, month=mon, day_of_month=day))
+
+# Plotting
+######################################################################################
+
+
+
+# Util
+######################################################################################
