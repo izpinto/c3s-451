@@ -64,11 +64,15 @@ nav:
     #       - Datasets: using/datasets.md
     # - Examples:
     #       - World Ocean Database: examples/wod.md
-    # - API Reference:
+    - API Reference:
+        - Data functions: reference/data.md
+        - Plot functions: reference/plot.md
+        - Process functions: reference/process.md
+        - Utility functions: reference/util.md
     #       - Client: reference/client.md
     #       - Query: reference/query.md
     #       - Dataset: reference/dataset.md
     #       - Functions: reference/functions.md
     #       - Table: reference/table.md
     # - Changelog: changelog.md
-    - Event Attribution: https://event-attribution.copernicus-climate.eu/
+    - Event Attribution Homepage: https://event-attribution.copernicus-climate.eu/
