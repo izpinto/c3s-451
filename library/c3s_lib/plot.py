@@ -1185,3 +1185,302 @@ def plot_koppen_geiger(
     draw_koppen_legend(fig, kg_legend)
 
     return fig, ax
+
+def create_grid(n_panels, ncols=4, projection=None, sharex=False, sharey=False):
+    """
+    Creates a grid of subplots based on the number of panels required.
+    """
+    nrows = int(np.ceil(n_panels / ncols))
+    if n_panels < ncols:
+        ncols = n_panels
+
+    fig, axs = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(20, 4 * nrows), # Slightly increased height per row for breathing room
+        dpi=100,
+        subplot_kw={"projection": projection} if projection else None,
+        sharex=sharex,
+        sharey=sharey,
+    )
+
+    axs = np.array(axs)
+    axs_flat = axs.flatten()
+
+    return fig, axs, axs_flat, nrows, ncols
+
+
+def plot_spatial_maps(
+    obs, spatial_maps, value_col:str, legend_title:str=None, ncols:int=4, cmap:str=None, borders:bool=True, coastlines:bool=True, 
+    gridlines:bool=True, projection:cartopy.crs=ccrs.PlateCarree(), dpi:int=100, 
+    add_logos:bool=True
+):
+    """
+    Plots ERA5 (obs) in the top-left corner and CORDEX models in subsequent rows.
+    """
+    
+    cmap = cmap if cmap else value_col
+    n_models = len(spatial_maps)
+    total_slots = ncols + n_models
+    
+    fig, axs, axs_flat, nrows, ncols = create_grid(
+        n_panels=total_slots, 
+        projection=projection
+    )
+
+    # Calculate Global Limits 
+    data_obs = obs.mean(dim="valid_time") if "valid_time" in obs.dims else obs
+    vmin, vmax = data_obs.min().values, data_obs.max().values
+    cmap, norm = get_colormap(cmap, vmin, vmax, value_col=value_col)
+    
+    # Observational data
+    ax_obs = axs_flat[0]
+    
+    ax_obs.pcolormesh(
+        data_obs.longitude, data_obs.latitude, data_obs,
+        cmap=cmap, norm=norm, transform=ccrs.PlateCarree()
+    )
+    
+    ax_obs.set_title("ERA5", fontsize=18, weight='medium')
+    
+    # Apply standard plot.py map features
+    ax_obs.coastlines()
+    ax_obs.add_feature(cartopy.feature.BORDERS, lw=1, alpha=0.7, ls="--")
+    ax_obs.gridlines(draw_labels=False, linewidth=0.5, color='black', alpha=0.2)
+
+
+    # Turn off the rest of the first row (empty space)
+    for i in range(1, ncols):
+        axs_flat[i].set_axis_off()
+
+    # Cordex models
+    start_index = ncols
+
+    for i, (name, da_clim) in enumerate(spatial_maps.items()):
+        ax_idx = start_index + i
+        ax = axs_flat[ax_idx]
+
+        # Plot
+        ax.pcolormesh(
+            da_clim.longitude, da_clim.latitude, da_clim,
+            cmap=cmap, norm=norm, transform=ccrs.PlateCarree()
+        )
+
+        ax.set_title(name, fontsize=18, weight='medium')
+        
+        # Standard features
+        ax.coastlines()
+        ax.add_feature(cartopy.feature.BORDERS, lw=1, alpha=0.7, ls="--")
+        ax.gridlines(draw_labels=False, linewidth=0.5, color='black', alpha=0.2)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm._A = []
+
+    # Handle any normalization type to determine ticks
+    if hasattr(norm, "boundaries") and norm.boundaries is not None:
+        ticks = norm.boundaries
+        tick_labels = [int(b) for b in ticks]
+
+    else:
+        if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+            ticks = np.linspace(norm.vmin, norm.vmax, len(anomaly_colors))
+            for t in [0, -0.5]:
+                if t not in ticks:
+                    ticks = np.sort(np.append(ticks, t))
+            tick_labels = [int(t) if abs(t) >= 1 else round(t, 1) for t in ticks]
+        else:
+            if vmin >= 0:
+                n_ticks = temperature_positive_cmap.N + 1
+            elif vmax <= 0:
+                n_ticks = temperature_negative_cmap.N + 1
+            else:
+                n_ticks = temperature_cmap.N + 1
+
+            ticks = np.linspace(norm.vmin, norm.vmax, n_ticks)
+            tick_labels = [round(t, 1) for t in ticks]
+
+
+    cbar = fig.colorbar(
+        sm, ax=axs_flat.tolist(), 
+        orientation='horizontal', location="top",
+        fraction=0.01, pad=.08, aspect=100, ticks=ticks)
+    
+    if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+        cbar.ax.set_xlim(-0.5, None)
+        
+    cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
+    cbar.set_ticklabels(tick_labels)
+
+    plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=roboto_condensed_regular.get_name(), fontsize=13)
+    
+
+    # Hide unused axes in the bottom rows
+    last_used_index = start_index + n_models
+    for i in range(last_used_index, len(axs_flat)):
+        axs_flat[i].set_axis_off()
+
+    if add_logos:
+        plt.close(fig)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.2)
+        return fig, axs_flat, img_ax
+    else:
+        plt.tight_layout()
+        return fig, axs_flat, None
+    
+def month_ticks():
+    import pandas as pd
+    days = pd.date_range(start="2020-01-01", end="2021-01-01")
+    ticks = [i for i in range(365) if days[i].day == 15]
+    labels = [days[i].strftime("%b")[0] for i in range(365) if days[i].day == 15]
+    return ticks, labels, days
+
+def plot_seasonal_cycles(seasonal_cycles, obs_seasonal_cycle, value_col:str,
+                          legend_title:str=None, cmap:str=None, add_logos:bool=True,
+                          projection:cartopy.crs=ccrs.PlateCarree(), dpi:int=100,
+                          subtitle:bool=True):
+
+    n_models = len(seasonal_cycles)
+    fig, axs, axs_flat, nrows, ncols = create_grid(n_models, sharex=True, sharey=True)
+
+    ticks, labels, days = month_ticks()
+    
+    for i, (model_name, da) in enumerate(seasonal_cycles.items()):
+        ax = axs_flat[i]
+
+        ax.plot(da.values, label="model")
+        ax.plot(obs_seasonal_cycle[value_col].values, color="k", label="ERA5")
+
+        ax.set_title(model_name.replace("_", "-"), weight="medium", fontsize=18)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels)
+        ax.grid(alpha=0.1)
+
+        for d in range(365):
+            if days[d].day == 1:
+                ax.axvline(d, color="k", alpha=0.05)
+
+        ax.legend()
+
+    for j in range(i + 1, len(axs.flatten())):
+        axs.flatten()[j].set_axis_off()
+
+    if subtitle:
+        fig.suptitle(legend_title, y=1.2, fontsize=20, weight='medium')
+
+    if add_logos:
+        plt.close(fig)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-.01)
+        return fig, ax, img_ax
+    else:
+        img_ax = None
+        return fig, ax, img_ax
+    
+def plot_rolling_window_comparison(
+    model_dfs: dict,
+    obs_df: pd.DataFrame,
+    value_col: str,
+    time_col: str = "year",
+    model_value_col: str = "value", # The column name in model_dfs (often standardized to 'value')
+    legend_title: str = None,
+    figsize: tuple = None,
+    dpi: int = 100,
+    add_logos: bool = True,
+    subtitle: bool = True
+):
+    """
+    Plots a grid comparing rolling window statistics of models vs observations with Confidence Intervals.
+    Reuses create_grid and adds logos.
+    """
+    
+    n_models = len(model_dfs)
+    
+    # Create Grid
+    fig, axs, axs_flat, nrows, ncols = create_grid(
+        n_panels=n_models,
+        sharex=True,
+        sharey=True
+    )
+
+    # Iterate and Plot
+    for i, (model_name, model_df) in enumerate(model_dfs.items()):
+        ax = axs_flat[i]
+        
+        
+        # Plot OBSERVATIONS
+        ax.plot(
+            obs_df[time_col], obs_df[value_col], 
+            color='black', 
+            linewidth=1.5, 
+            linestyle='--', 
+            label='ERA 5 Observations'
+        )
+        
+        # Plot CI 
+        obs_lower = f"{value_col}_ci_lower"
+        obs_upper = f"{value_col}_ci_upper"
+        
+        if obs_lower in obs_df.columns and obs_upper in obs_df.columns:
+            ax.fill_between(
+                obs_df[time_col],
+                obs_df[obs_lower],
+                obs_df[obs_upper],
+                color='gray',
+                alpha=0.2
+            )
+
+        
+        # Plot MODELS
+        ax.plot(
+            model_df[time_col], model_df[model_value_col], 
+            color='darkblue', 
+            linewidth=1.5, 
+            linestyle='-', 
+            label='Cordex Model'
+        )
+        
+        # Plot CI (Model)
+        mod_lower = f"{model_value_col}_ci_lower"
+        mod_upper = f"{model_value_col}_ci_upper"
+        
+        if mod_lower in model_df.columns and mod_upper in model_df.columns:
+            ax.fill_between(
+                model_df[time_col],
+                model_df[mod_lower],
+                model_df[mod_upper],
+                color='lightblue',
+                alpha=0.3
+            )
+
+        # Formatting
+        ax.set_title(model_name.replace("_", " "), weight='bold', fontsize=14)
+        
+        # Only set xlabel on bottom row
+        if i >= (nrows - 1) * ncols:
+            ax.set_xlabel(time_col.capitalize())
+        
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='best', fontsize='small')
+
+    # Hide Unused Panels
+    for j in range(i + 1, len(axs_flat)):
+        axs_flat[j].set_axis_off()
+
+    # Subtitle and Layout
+    if subtitle and legend_title:
+        fig.suptitle(
+            legend_title, 
+            fontsize=20, 
+            weight='bold', 
+            color="#364563",
+            y=1.02
+        )
+
+    fig.tight_layout()
+
+    # Logos and Return
+    if add_logos:
+        plt.close(fig)
+        fig, img_ax = add_image_below(fig=fig, image_path=logo_horizon_path, pad_frac=-0.02)
+        return fig, axs_flat, img_ax
+    else:
+        return fig, axs_flat, None

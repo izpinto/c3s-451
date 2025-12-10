@@ -381,17 +381,45 @@ def calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=1
 
 
 # apply a weight to each value based on latitude
-def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude') -> gpd.GeoDataFrame:
-
-    out_col = f"{value_col}_weighted"
+def weighted_values(data, value_col=None, lat_col:str='latitude'):
+    """
+    Apply cosine-latitude weighting to either a GeoDataFrame or xarray object.
     
-    gdf = gdf.copy()
-    weights = np.cos(np.radians(gdf[lat_col]))
-    gdf[out_col] = gdf[value_col] * weights
-    gdf["_weight"] = weights
+    Parameters
+    ----------
+    data : GeoDataFrame, xarray.DataArray, or xarray.Dataset
+    value_col : str
+        Column name (GDF) or variable name (xarray) containing values to weight.
+    lat_col : str
+        Name of the latitude column/dimension.
+    """    
+    
+    if isinstance(data, gpd.GeoDataFrame):
+        out_col = f"{value_col}_weighted"
+        
+        data = data.copy()
+        weights = np.cos(np.radians(data[lat_col]))
+        data[out_col] = data[value_col] * weights
+        data["_weight"] = weights
 
-    return gdf
+        return data
+    
+    if isinstance(data, xr.DataArray):
 
+        if lat_col not in data.coords:
+            raise ValueError(f"Latitude coordinate '{lat_col}' not found.")
+
+        data = data.copy()
+        lat = data[lat_col]
+        weights = np.cos(np.radians(lat))
+
+        # Broadcast weights
+        weights = xr.broadcast(weights, data)[0]
+
+        # Weighted values
+        data = data * weights
+
+        return data
 
 def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, groupby_col:str) -> gpd.GeoDataFrame:
 
@@ -593,3 +621,52 @@ def filter_polygons_by_kg(
                         adjusted_polygons.extend(list(clipped_poly.geoms))
 
     return adjusted_polygons
+
+def calculate_yearly_statistics(
+    time_series: dict[str, xr.DataArray],
+    yearly_value: str,              # options: "max", "mean", "min"
+    padding: int,                   # n-day rolling window
+    method: str = None              # "mean" or "sum"
+) -> dict[str, xr.DataArray]:
+    """
+    Iterates over a dictionary of DataArrays, applies a rolling window and 
+    resamples to yearly values (max, mean, or min) in a single step.
+    """
+    da_yearly_series = {}
+
+    for name, da in time_series.items():
+        # Determine method automatically for this specific DataArray if not provided
+        current_method = method
+        if current_method is None:
+            # Check variable name safely
+            var_name = da.name.lower() if da.name else ""
+            if any(k in var_name for k in ["tp", "precip", "pr"]):
+                current_method = "sum"
+            else:
+                current_method = "mean"
+
+        # Rolling window on the daily series
+        if padding is not None and padding > 1:
+            if current_method == "mean":
+                da_rolled = da.rolling(time=padding, center=True).mean()
+            elif current_method == "sum":
+                da_rolled = da.rolling(time=padding, center=True).sum()
+            else:
+                raise ValueError(f"Method must be 'mean' or 'sum', got '{current_method}'")
+        else:
+            da_rolled = da
+
+        # Compute yearly statistic on the rolled series
+        if yearly_value == "max":
+            da_year = da_rolled.resample(time="YE").max()
+        elif yearly_value == "mean":
+            da_year = da_rolled.resample(time="YE").mean()
+        elif yearly_value == "min":
+            da_year = da_rolled.resample(time="YE").min()
+        else:
+            raise ValueError(f"yearly_value must be: max, mean, min. Got '{yearly_value}'")
+        
+        # 4. Store result
+        da_yearly_series[name] = da_year
+
+    return da_yearly_series
