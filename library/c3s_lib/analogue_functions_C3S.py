@@ -637,5 +637,6 @@ def extract_year(cube, Y1, Y2):
     if not any(coord.name() == "year" for coord in cube.coords()):
         iris.coord_categorisation.add_year(cube, 'time')
     
-    # is this excluding Y2?
-    return cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
+
+    rCube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
+    return rCube
