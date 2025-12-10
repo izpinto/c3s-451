@@ -6,10 +6,30 @@ import beacon_api
 from datetime import datetime, timedelta
 from cdsapi import Client
 import tempfile
-import glob
 import numpy as np
 
+
+try:
+    # Available in Python 3.12+ as per PEP 702
+    from warnings import deprecated
+except ImportError:
+    # Backport available in typing_extensions for older versions
+    from typing_extensions import deprecated
+
+
 class DataClient():
+    """
+    DataClient is a class that provides methods to fetch and process climate data
+    from various sources including the Climate Data Store (CDS), Beacon Cache, and MARS.
+    
+    Parameters:
+        cds_key (str): The API key for the Climate Data Store (CDS).
+        beacon_cache_url (str | None): Optional URL for the Beacon Cache service.
+        beacon_token (str | None): Optional token for accessing the Beacon Cache.
+        mars_key (str | None): Optional API key for accessing MARS data.
+        
+    
+    """
     def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None) -> None:
         self.cds_client = CDSClient(cds_key)
         self.beacon_cache = None
@@ -21,18 +41,21 @@ class DataClient():
 
     def _bbox_to_0_360(self, bbox: tuple[float,float,float,float], eps=1e-9) -> list[tuple[float,float,float,float]]:
         """
-        Convert a bbox from [-180,180] lon to [0,360] lon.
-        If it crosses 0° after conversion, return two bboxes that wrap around.
-        
-        Parameters
-        ----------
-        bbox : tuple (min_lon, min_lat, max_lon, max_lat) with lon in [-180,180]
-        eps  : small tolerance
-        as_shapely : if True, return shapely boxes (requires shapely)
-        
-        Returns
-        -------
-        list of bboxes in (min_lon_360, min_lat, max_lon_360, max_lat) or shapely boxes
+        Convert a bounding box from [-180, 180] longitude to [0, 360] longitude.
+
+        If the converted box crosses 0°, return two wrapped bounding boxes.
+
+        Parameters:
+            bbox (tuple):
+                (min_lon, min_lat, max_lon, max_lat) with longitude in [-180, 180].
+            eps (float):
+                Small tolerance value.
+            as_shapely (bool):
+                If True, return shapely boxes (requires shapely).
+
+        Returns:
+            list: List of bounding boxes in
+            (min_lon_360, min_lat, max_lon_360, max_lat) format or shapely boxes.
         """
         min_lon, min_lat, max_lon, max_lat = bbox
 
@@ -59,6 +82,38 @@ class DataClient():
         return out
 
     def _convert_temp(self, df: gpd.GeoDataFrame, from_unit="k", to_unit="c") -> gpd.GeoDataFrame:
+        """
+        Convert temperature values in the 't2m' column from one unit to another.
+
+        This method performs in-place temperature conversion within a GeoDataFrame and
+        supports Kelvin (k), Celsius (c), and Fahrenheit (f).
+
+        Parameters:
+            df (gpd.GeoDataFrame):
+                GeoDataFrame containing a 't2m' column with temperature values.
+            from_unit (str, optional):
+                Source temperature unit ('k', 'c', or 'f'). Default is 'k'.
+            to_unit (str, optional):
+                Target temperature unit ('k', 'c', or 'f'). Default is 'c'.
+
+        Returns:
+            gpd.GeoDataFrame: The GeoDataFrame with the 't2m' column converted to the
+            target unit.
+
+        Raises:
+            ValueError: If from_unit is not one of 'k', 'c', or 'f'.
+
+        Notes:
+            - If from_unit and to_unit are identical, no conversion is performed.
+            - Conversion modifies the 't2m' column in place.
+            - Conversion formulas:
+                - Kelvin to Celsius: C = K - 273.15
+                - Kelvin to Fahrenheit: F = (K - 273.15) × 9/5 + 32
+                - Celsius to Kelvin: K = C + 273.15
+                - Celsius to Fahrenheit: F = C × 9/5 + 32
+                - Fahrenheit to Kelvin: K = (F - 32) × 5/9 + 273.15
+                - Fahrenheit to Celsius: C = (F - 32) × 5/9
+        """
 
         if from_unit not in ["k", "c", "f"]:
             raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'k', 'c', or 'f'.")
@@ -70,7 +125,7 @@ class DataClient():
             return df
         if from_unit == "f" and to_unit == "f":
             return df
-        
+
         if from_unit == "k" and to_unit == "c":
             df['t2m'] = df['t2m'] - 273.15
         elif from_unit == "k" and to_unit == "f":
@@ -85,72 +140,223 @@ class DataClient():
             df['t2m'] = (df['t2m'] - 32) * 5/9
 
         return df
-    
+
     def _convert_precipitation(self, df: gpd.GeoDataFrame, from_unit, to_unit) -> gpd.GeoDataFrame:
+        """
+        Convert precipitation values in the 'tp' column between supported units.
+
+        Parameters:
+            df (gpd.GeoDataFrame):
+                GeoDataFrame containing a 'tp' column with precipitation values.
+            from_unit (str):
+                Source unit. Must be 'm' or 'm/h'.
+            to_unit (str):
+                Target unit. Supported target unit is 'mm'.
+
+        Returns:
+            gpd.GeoDataFrame: The GeoDataFrame with converted precipitation values.
+
+        Raises:
+            ValueError: If from_unit is not 'm' or 'm/h'.
+        """
+
         if from_unit not in ["m", "m/h"]:
             raise ValueError(f"Invalid from_unit: {from_unit}. Must be 'm' or 'm/h'.")
             return df
-        
+
         if from_unit == "m/h" and to_unit == "mm":
             df['tp'] = df['tp'] * 24000
             print("Converted from m/h to mm.")
         elif from_unit == "m" and to_unit == "mm":
             df['tp'] = df['tp'] * 1000
             print("Converted from m to mm.")
-        
+
         return df
-    
+
     def last_day_of_month(self, dt: datetime) -> datetime:
+        """
+        Return the last day of the month for the given datetime.
+
+        Parameters:
+            dt (datetime):
+                The input datetime.
+
+        Returns:
+            datetime: The datetime corresponding to the last day of the same month.
+        """
         next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
         return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
-    
+
     def get_beacon_cache(self, gdfs:list[gpd.GeoDataFrame],
                          bbox:tuple[float, float, float, float],
                          time_range:tuple[datetime, datetime],
-                         var:str, var_to:str, table:str, months:list[int]|None=None,
-                         min_retrieved_time=None, max_retrieved_time=None):
-        
-        print("Fetching data from beacon cache...")
+                         var:str, 
+                         var_to:str, 
+                         table:str, 
+                         months:list[int]|None=None,
+                         min_retrieved_time=None, 
+                         max_retrieved_time=None):
+        """
+        Attempts to retrieve data from the beacon cache for the specified parameters.
+
+        This method fetches ERA5 daily data from a zarr-based beacon cache and handles
+        bounding boxes that cross the antimeridian by converting longitudes to the
+        0–360 degree range. It also updates the minimum and maximum retrieved timestamps
+        based on accumulated results.
+
+        Parameters:
+            gdfs (list[gpd.GeoDataFrame]):
+                List to which retrieved GeoDataFrames will be appended.
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]):
+                Start and end datetime for data retrieval.
+            var (str):
+                Source variable name to retrieve from the cache.
+            var_to (str):
+                Target variable name to rename the retrieved variable to.
+            table (str):
+                Table identifier used for the beacon cache query.
+            months (list[int] | None, optional):
+                List of months to filter by. Default is None.
+            min_retrieved_time (datetime | None, optional):
+                Minimum previously retrieved timestamp. Default is None.
+            max_retrieved_time (datetime | None, optional):
+                Maximum previously retrieved timestamp. Default is None.
+
+        Returns:
+            tuple: A tuple containing:
+                - list[gpd.GeoDataFrame]: The updated list with appended GeoDataFrames.
+                - datetime: The minimum valid_time across all retrieved data.
+                - datetime: The maximum valid_time across all retrieved data.
+
+        Note:
+            - Retrieved data is sorted by valid_time, longitude, and latitude.
+            - The source variable is renamed to the target variable name.
+            - Antimeridian crossing is handled by converting the bounding box to 0–360° longitude.
+        """
+
+        print(f"Fetching data from beacon cache for range: {time_range[0]} - {time_range[1]}")
+
         adjusted_bboxes = self._bbox_to_0_360(bbox)
-        
+
         for beacon_bbox in adjusted_bboxes:
-            print("Beacon Bbox: "+  str(beacon_bbox))
+            # print("Beacon Bbox: "+  str(beacon_bbox))
             gdf = self.beacon_cache._fetch_from_era5_daily_zarr(bbox=beacon_bbox, time_range=time_range, variable=var, months=months, table=table)
             if not gdf.empty:
                 gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                 # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
                 min_retrieved_time = min(gdf['valid_time'].min(), min_retrieved_time) if min_retrieved_time is not None else gdf['valid_time'].min()
                 max_retrieved_time = max(gdf['valid_time'].max(), max_retrieved_time) if max_retrieved_time is not None else gdf['valid_time'].max()
-                
+
                 # Rename t2m_min to t2m for consistency
                 gdf = gdf.rename(columns={var: var_to})
-                
+
                 gdfs.append(gdf)
-        
+
         return gdfs, min_retrieved_time, max_retrieved_time
-    
+
     def get_cds_data(self, gdfs:list[gpd.GeoDataFrame],
                      bbox:tuple[float, float, float, float],
                      time_range:tuple[datetime, datetime],
-                     var:str, statistic:str, months:list[int]|None=None,
-                     min_retrieved_time=None, max_retrieved_time=None):
+                     var:str, 
+                     statistic:str, 
+                     months:list[int]|None=None,
+                     min_retrieved_time:datetime|None=None, 
+                     max_retrieved_time:datetime|None=None
+            ):
+        """
+        Fetch climate data from the CDS for a specified time range and location.
 
-        print(f"Requesting missing data from CDS for range: {time_range[0]} - {time_range[1]}")
+        This method retrieves ERA5 single-level daily statistics from the CDS API and
+        appends the results to a list of GeoDataFrames. It also tracks the minimum and
+        maximum retrieved timestamps across multiple calls.
+
+        Parameters:
+            gdfs (list[gpd.GeoDataFrame]):
+                List to which newly fetched GeoDataFrames will be appended.
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (west, south, east, north).
+            time_range (tuple[datetime, datetime]):
+                Start and end datetime for the data request.
+            var (str):
+                The daily statistic variable to retrieve (e.g., 'maximum_2m_temperature_in_last_24h').
+            statistic (str):
+                Statistical measure to apply to the variable.
+            months (list[int] | None, optional):
+                List of months (1–12) to filter by. Defaults to None (all months).
+            min_retrieved_time (datetime | None, optional):
+                Current minimum timestamp from previous retrievals. Defaults to None.
+            max_retrieved_time (datetime | None, optional):
+                Current maximum timestamp from previous retrievals. Defaults to None.
+
+        Returns:
+            tuple: A tuple containing:
+                - gdfs (list[gpd.GeoDataFrame]): Updated list with newly fetched GeoDataFrames appended.
+                - min_retrieved_time (datetime): Minimum valid_time across all retrieved data.
+                - max_retrieved_time (datetime): Maximum valid_time across all retrieved data.
+
+        Side Effects:
+            - Prints a message indicating the time range being fetched from CDS.
+            - Modifies the input gdfs list by appending new data.
+        """
+
+        print(f"Fetching missing data from CDS for range: {time_range[0]} - {time_range[1]}")
+
         gdf = self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", [statistic], bbox, time_range=time_range, daily_statistic=var, months=months)
         min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
         max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
+
         gdfs.append(gdf)
 
         return gdfs, min_retrieved_time, max_retrieved_time
-    
-    def get_mars_data(self, gdfs:list[gpd.GeoDataFrame],
-                     bbox:tuple[float, float, float, float],
-                     time_range:tuple[datetime, datetime],
-                     var:str, min_retrieved_time=None, max_retrieved_time=None):
 
-        print("Missing data at the end of the time range.")
+    def get_mars_data(
+        self,
+        gdfs: list[gpd.GeoDataFrame],
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        var: str,
+        min_retrieved_time: datetime | None = None,
+        max_retrieved_time: datetime | None = None,
+    ):
+        """
+        Fetch operational data from MARS for a specified variable and time range.
+
+        This method retrieves missing meteorological data from the MARS Operational
+        archive to fill gaps in a time series. Supported variables include temperature
+        (min, max, mean) and total precipitation. It also tracks the minimum and maximum
+        retrieved timestamps across multiple calls.
+
+        Parameters:
+            gdfs (list[gpd.GeoDataFrame]):
+                List to which fetched GeoDataFrames will be appended.
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]):
+                Start and end datetime for the data request.
+            var (str):
+                Variable to fetch. Supported values: 't2m_min', 't2m_max', 't2m_mean', 'tp'.
+            min_retrieved_time (datetime | None, optional):
+                Minimum datetime already retrieved. Defaults to None.
+            max_retrieved_time (datetime | None, optional):
+                Maximum datetime already retrieved; used as start date for fetching.
+                Defaults to None, which uses time_range[0].
+
+        Returns:
+            tuple[list[gpd.GeoDataFrame], datetime | None, datetime | None]:
+                - Updated list of GeoDataFrames with newly fetched data appended.
+                - Updated minimum retrieved time across all fetches.
+                - Updated maximum retrieved time across all fetches.
+
+        Note:
+            - If mars_client is not configured, a warning is printed and inputs are returned unchanged.
+            - min_retrieved_time and max_retrieved_time are updated based on the 'valid_time' column of fetched data.
+        """
+
+        print(f"Fetching missing data at the end of the time range from MARS Operational for range: {time_range[0]} - {time_range[1]}")
+
         if self.mars_client is not None:
-            print(f"Fetching missing data from MARS Operational for range: {time_range[0]} - {time_range[1]}")
 
             gdf = None
 
@@ -167,68 +373,94 @@ class DataClient():
             if var == 'tp':
                 gdf = self.mars_client.fetch_total_precipitation_operational_data(min_date=max_retrieved_time if max_retrieved_time is not None else time_range[0],
                                                                         max_date=time_range[1], min_lon=bbox[0], max_lon=bbox[2], min_lat=bbox[1], max_lat=bbox[3])
-            
+
             # Update min and max retrieved time
             min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
             max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
-            
+
             gdfs.append(gdf)
         else:
             print("MARS client not configured, cannot fetch missing data.")
 
         return gdfs, min_retrieved_time, max_retrieved_time
-    
-    
-    def temperature_2m_min(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
-        """
-        Fetches minimum temperature data for a given bounding box and time range.
 
-        # Parameters:
-        - bbox: A tuple of (min_longitude, min_latitude, max_longitude, max_latitude).
-        - time_range: A tuple of (start_time, end_time) as datetime objects. Inclusive range.
-
-        # Returns:
-        - A pandas DataFrame containing the minimum temperature data.
+    def temperature_2m_min(
+        self,
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        months: list[str] | list[int] | None = None,
+        from_unit: str = "k",
+        to_unit: str = "c",
+    ) -> gpd.GeoDataFrame:
         """
+        Fetch minimum 2-meter temperature data for a specified bounding box and time range.
+
+        This method retrieves data from multiple sources in the following order:
+        1. Beacon cache (if available)
+        2. CDS API (for missing data)
+        3. MARS data (for remaining gaps)
+        4. MARS Forecast data 
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            months (list[str] | list[int] | None, optional):
+                Filter by month names or numbers (1–12). Defaults to None (all months).
+            from_unit (str, optional):
+                Source temperature unit. Default is "k" (Kelvin).
+            to_unit (str, optional):
+                Target temperature unit. Default is "c" (Celsius).
+
+        Returns:
+            gpd.GeoDataFrame: GeoDataFrame containing minimum 2-meter temperature data
+            in EPSG:4326, with values converted to the specified unit.
+
+        Notes:
+            - Data gaps are handled automatically by fetching from multiple sources.
+            - A warning is printed if data is still missing after all attempts.
+            - MARS Forecast data retrieval is not fully implemented yet.
+        """
+
         # Implementation will go here
         min_retrieved_time = None
         max_retrieved_time = None
         gdfs = []
-        
+
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='t2m_min', var_to='t2m', table='daily')
-                    
+
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
             print("Missing data in beacon cache, fetching missing data from CDS...")
-            
+
             if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_min', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_min', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
-                
+
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
             gdfs, min_retrieved_time, max_retrieved_time = self.get_mars_data(gdfs, bbox, time_range, var='t2m_min', min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
+            # TODO: implement MARS Forecast data fetching or remove if block
             print("Still missing data. Fetching from MARS Forecast data...")
             if self.mars_client is not None:
                 # Write warning that it is not implemented yet
                 print("MARS Forecast data fetching not implemented yet.")
-                
-                
+
         # Concatenate all GeoDataFrames
         final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
 
@@ -236,17 +468,45 @@ class DataClient():
 
         return df
 
-    def temperature_2m_max(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+    def temperature_2m_max(
+        self,
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        months: list[str] | list[int] | None = None,
+        from_unit: str = "k",
+        to_unit: str = "c",
+    ) -> gpd.GeoDataFrame:
         """
-        Fetches maximum temperature data for a given bounding box and time range.
+        Fetch maximum 2-meter temperature data for a specified bounding box and time range.
 
-        # Parameters:
-        - bbox: A tuple of (min_longitude, min_latitude, max_longitude, max_latitude).
-        - time_range: A tuple of (start_time, end_time) as datetime objects. Inclusive range.
+        This method retrieves data from multiple sources in the following order:
+        1. Beacon cache (if available)
+        2. CDS API (for missing data)
+        3. MARS data (for remaining gaps)
+        4. MARS Forecast data 
 
-        # Returns:
-        - A pandas DataFrame containing the maximum temperature data.
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            months (list[str] | list[int] | None, optional):
+                Filter by month names or numbers (1–12). Defaults to None (all months).
+            from_unit (str, optional):
+                Source temperature unit. Default is "k" (Kelvin).
+            to_unit (str, optional):
+                Target temperature unit. Default is "c" (Celsius).
+
+        Returns:
+            gpd.GeoDataFrame: GeoDataFrame containing maximum 2-meter temperature data
+            in EPSG:4326, with values converted to the specified unit.
+
+        Notes:
+            - Data gaps are handled automatically by fetching from multiple sources.
+            - A warning is printed if data is still missing after all attempts.
+            - MARS Forecast data retrieval is not fully implemented yet.
         """
+
         # Implementation will go here
         min_retrieved_time = None
         max_retrieved_time = None
@@ -255,19 +515,18 @@ class DataClient():
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='t2m_max', var_to='t2m', table='daily')
-                    
-                    
+
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
             print("Missing data in beacon cache, fetching missing data from CDS...")
-            
+
             if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_max', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
@@ -275,60 +534,113 @@ class DataClient():
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_max', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
 
-                
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
             gdfs, min_retrieved_time, max_retrieved_time = self.get_mars_data(gdfs, bbox, time_range, var='t2m_max', min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             print("Still missing data. Fetching from MARS Forecast data...")
             if self.mars_client is not None:
                 # Write warning that it is not implemented yet
                 print("MARS Forecast data fetching not implemented yet.")
-                
+
         # Concatenate all GeoDataFrames
         final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
 
         df = self._convert_temp(final_gdf, from_unit, to_unit)
 
         return df
-    
-    def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+
+    def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+        """
+        Fetch mean sea level pressure data for a specified bounding box and time range.
+
+        This method retrieves daily mean sea level pressure statistics from the ERA5
+        single levels daily statistics dataset via the CDS client.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Time range as (start_date, end_date) defining the period for which to fetch data.
+
+        Returns:
+            gpd.GeoDataFrame: A GeoDataFrame containing mean sea level pressure data with
+            spatial and temporal information.
+        """
         return self.cds_client._fetch_data_single_levels("derived-era5-single-levels-daily-statistics", ['mean_sea_level_pressure'], bbox, time_range, daily_statistic="daily_mean")
 
-    def z500_geopotential_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+    def z500_geopotential_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+        """
+        Fetch daily mean geopotential data at 500 hPa pressure level from ERA5.
+
+        This method retrieves geopotential height data at the 500 hPa pressure level,
+        which is commonly used in meteorological analysis to identify atmospheric patterns
+        and pressure systems.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]): 
+                Bounding box coordinates in the format (min_longitude, min_latitude, max_longitude, max_latitude) defining the geographical area of interest.
+            time_range (tuple[datetime, datetime]): 
+                Time range as a tuple of two datetime objects (start_date, end_date) defining the temporal extent of the data.
+
+        Returns:
+            gpd.GeoDataFrame: 
+                A GeoDataFrame containing the daily mean geopotential data
+                at 500 hPa pressure level for the specified spatial and temporal extent.
+        """
         return self.cds_client._fetch_data_pressure_levels("derived-era5-pressure-levels-daily-statistics", ['geopotential'], bbox, time_range, levels=[500], daily_statistic="daily_mean")
 
     def temperature_2m_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
-        Fetches mean temperature data for a given bounding box and time range.
+        Fetches mean 2-meter temperature data for a specified bounding box and time range.
+        This method attempts to retrieve data from multiple sources in the following order:
+        1. Beacon cache (if available)
+        2. CDS API (for missing data)
+        3. MARS data (for any remaining gaps)
+        4. MARS Forecast data 
 
-        # Parameters:
-        - bbox: A tuple of (min_longitude, min_latitude, max_longitude, max_latitude).
-        - time_range: A tuple of (start_time, end_time) as datetime objects. Inclusive range.
-        
-        # Returns:
-        - A pandas DataFrame containing the mean temperature data.
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box defined as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            months (list[str] | list[int] | None, optional):
+                Filter by month names or month numbers (1–12). If None, all months are included.
+            from_unit (str, optional):
+                Unit of the source temperature data. Default is "k".
+            to_unit (str, optional):
+                Desired output temperature unit. Default is "c".
+
+        Returns:
+            gpd.GeoDataFrame: 
+                GeoDataFrame containing mean 2-meter temperature data
+                in EPSG:4326 with temperature converted to the target unit.
+
+        Notes:
+            - Data gaps are automatically backfilled using multiple sources.
+            - Remaining gaps trigger a warning.
+            - MARS Forecast data retrieval is not fully implemented yet.
         """
         min_retrieved_time = None
         max_retrieved_time = None
         gdfs = []
-        
+
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='t2m', var_to='t2m', table='daily')
-                    
+
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
             print("Missing data in beacon cache, fetching missing data from CDS...")
-            
+
             if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_mean', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
@@ -336,17 +648,16 @@ class DataClient():
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_mean', statistic='2m_temperature',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
 
-                
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
             gdfs, min_retrieved_time, max_retrieved_time = self.get_mars_data(gdfs, bbox, time_range, var='t2m_mean', min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             print("Still missing data. Fetching from MARS Forecast data...")
             if self.mars_client is not None:
                 # Write warning that it is not implemented yet
                 print("MARS Forecast data fetching not implemented yet.")
-        
+
         # Concatenate all GeoDataFrames
         final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
 
@@ -354,56 +665,65 @@ class DataClient():
         df = self._convert_temp(final_gdf, from_unit, to_unit)
 
         return df
-    
+
     def total_precipitation(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str = "m", to_unit:str = "mm") -> gpd.GeoDataFrame:
         """
-        Fetches precipitation data for a given bounding box and time range.
-        # Parameters:
-        - bbox: A tuple of (min_longitude, min_latitude, max_longitude, max_latitude).
-        - time_range: A tuple of (start_time, end_time) as datetime objects. Inclusive range.
+        Fetch precipitation data for a given bounding box and time range.
 
-        # Returns:
-        - A pandas DataFrame containing the precipitation data.
-        - precipitation is in L/m^2/day
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            months (list[str] | list[int] | None, optional):
+                Filter by specific months (names or numbers 1–12). Defaults to None (all months).
+            from_unit (str, optional):
+                Source unit of precipitation. Default is "m".
+            to_unit (str, optional):
+                Target unit of precipitation. Default is "mm".
+
+        Returns:
+            gpd.GeoDataFrame: GeoDataFrame containing precipitation data in the specified unit.
+            Precipitation values are expressed in L/m²/day.
         """
+
         # Implementation will go here
         min_retrieved_time = None
         max_retrieved_time = None
         gdfs = []
-        
+
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             gdfs, min_retrieved_time, max_retrieved_time = self.get_beacon_cache(gdfs, bbox, time_range, months=months, var='total_precipitation', var_to='tp', table='daily')
-                    
+
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
             print("Missing data in beacon cache, fetching missing data from CDS...")
-            
+
             if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                 # Request missing data from CDS
                 fetch_start = time_range[0]
                 fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_sum', statistic='tp',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
                 gdfs, min_retrieved_time, max_retrieved_time = self.get_cds_data(gdfs, bbox, (fetch_start, fetch_end), months=months, var='daily_sum', statistic='tp',
                                                                                  min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                    
+
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             # We are still missing data at the end of the range, try to fetch from MARS if available
             gdfs, min_retrieved_time, max_retrieved_time = self.get_mars_data(gdfs, bbox, time_range, var='tp', min_retrieved_time=min_retrieved_time, max_retrieved_time=max_retrieved_time)
-                
+
         if max_retrieved_time is None or max_retrieved_time < time_range[1]:
             print("Still missing data. Fetching from MARS Forecast data...")
             if self.mars_client is not None:
                 # Write warning that it is not implemented yet
                 print("MARS Forecast data fetching not implemented yet.")
-        
-                    
+
         # Concatenate all GeoDataFrames
         final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
 
@@ -411,17 +731,24 @@ class DataClient():
         df = self._convert_precipitation(final_gdf, from_unit, to_unit)
 
         return df
-    
+
     def gmst(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
         """
-        Fetches global mean surface temperature data for a given bounding box and time range.
+        Fetch global mean surface temperature data for a given bounding box and time range.
 
-        # Parameters:
-        - bbox: A tuple of (min_longitude, min_latitude, max_longitude, max_latitude).
-        - time_range: A tuple of (start_time, end_time) as datetime objects. Inclusive range.
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            from_unit (str, optional):
+                Source temperature unit. Default is "k" (Kelvin).
+            to_unit (str, optional):
+                Target temperature unit. Default is "c" (Celsius).
 
-        # Returns:
-        - A pandas DataFrame containing the global mean surface temperature data.
+        Returns:
+            gpd.GeoDataFrame: GeoDataFrame containing global mean surface temperature data
+            in the specified unit.
         """
         # Implementation will go here
         min_retrieved_time = None
@@ -442,7 +769,7 @@ class DataClient():
         if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
             # No valid data found in beacon cache or we are missing data for the requested time range
             print("Missing gmst data in beacon cache, fetching missing gmst data from CDS...")
-            
+
             if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                 # Request missing data from CDS
                 fetch_start = time_range[0]
@@ -453,14 +780,14 @@ class DataClient():
                 max_retrieved_time = gdf['valid_time'].max() if max_retrieved_time is None else max(max_retrieved_time, gdf['valid_time'].max())
                 print(f"Fetched {len(gdf)} new records from CDS.")
                 gdfs.append(gdf)
-                
+
             if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                 # Request missing data from CDS
                 fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                 fetch_end = time_range[1]
                 print(f"Re-Requesting missing data from CDS for range: {fetch_start} - {fetch_end}")
                 gdf = self.cds_client._fetch_data_monthly_averaged('2m_temperature', bbox, (fetch_start, fetch_end))
-                
+
                 # Only retain data that is newer than max_retrieved_time
                 gdf = gdf[gdf['valid_time'] > max_retrieved_time] if max_retrieved_time is not None else gdf
                 min_retrieved_time = gdf['valid_time'].min() if min_retrieved_time is None else min(min_retrieved_time, gdf['valid_time'].min())
@@ -470,30 +797,88 @@ class DataClient():
 
         # Concatenate all GeoDataFrames
         final_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
-        
+
         final_gdf = self._convert_temp(final_gdf, from_unit, to_unit)
-        
+
         return final_gdf
-    
+
+    def fetch_data(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
+        """
+        Retrieve climate data for a specified parameter, bounding box, and time range.
+
+        Parameters:
+            parameter (str):
+                Climate parameter to retrieve. Supported values:
+                * "tmean": Mean 2m temperature
+                * "tmin": Minimum 2m temperature
+                * "tmax": Maximum 2m temperature
+                * "precipitation": Total precipitation
+                * "z500": 500 hPa geopotential mean
+                * "slp": Mean sea level pressure
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]):
+                Start and end datetime for the data request.
+            months (list[str] | list[int] | None, optional):
+                Months to filter data. Can be month names (full or abbreviated) or integers (1–12).
+                Defaults to None (all months included).
+            from_unit (str | None, optional):
+                Unit to convert from. If None, no conversion is applied.
+            to_unit (str | None, optional):
+                Unit to convert to. If None, no conversion is applied.
+
+        Returns:
+            gpd.GeoDataFrame:
+                GeoDataFrame containing the requested climate data.
+
+        Raises:
+            ValueError:
+                Raised if an invalid `parameter` is provided, or if month values are invalid
+                (integers not in 1–12, or unrecognized month names).
+
+        Notes:
+            * When `months` is specified, the time range is adjusted automatically from
+                the first day of the minimum month to the last day of the maximum month
+                within the given year range.
+        """
+
+        return self.GET(parameter, bbox, time_range, months, from_unit, to_unit)
+
+    @deprecated("Use `self.fetch_data()` instead.")
     def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
-        
+        """
+        Deprecated:
+            Use `self.fetch_data()` instead.
+        """
         parameter = parameter.lower()
 
         month_map = {
-            "jan": 1,  "january": 1,
-            "feb": 2,  "february": 2,
-            "mar": 3,  "march": 3,
-            "apr": 4,  "april": 4,
+            "jan": 1,
+            "january": 1,
+            "feb": 2,
+            "february": 2,
+            "mar": 3,
+            "march": 3,
+            "apr": 4,
+            "april": 4,
             "may": 5,
-            "jun": 6,  "june": 6,
-            "jul": 7,  "july": 7,
-            "aug": 8,  "august": 8,
-            "sep": 9,  "sept": 9, "september": 9,
-            "oct": 10, "october": 10,
-            "nov": 11, "november": 11,
-            "dec": 12, "december": 12,
+            "jun": 6,
+            "june": 6,
+            "jul": 7,
+            "july": 7,
+            "aug": 8,
+            "august": 8,
+            "sep": 9,
+            "sept": 9,
+            "september": 9,
+            "oct": 10,
+            "october": 10,
+            "nov": 11,
+            "november": 11,
+            "dec": 12,
+            "december": 12,
         }
-
+        
         # Build kwargs only if explicitly set
         unit_kwargs = {}
         if from_unit is not None:
@@ -519,7 +904,7 @@ class DataClient():
                         raise ValueError(f"Invalid month string: {m}")
                 else:
                     raise ValueError(f"Month must be int or str, got: {type(m)}")
-                
+
             # add months variable to kwargs
             unit_kwargs["months"] = allowed_months
 
@@ -529,7 +914,7 @@ class DataClient():
             time_range = (start, end)
 
         match parameter:
-            case 'tmean':
+            case "tmean":
                 return self.temperature_2m_mean(bbox, time_range, **unit_kwargs)
             case 'tmin':
                 return self.temperature_2m_min(bbox, time_range, **unit_kwargs)
@@ -543,7 +928,7 @@ class DataClient():
                 return self.mean_sea_level_pressure(bbox, time_range, **unit_kwargs)
             case _:
                 return ValueError(f"Unsupported parameter: {parameter}")
-    
+
 class CDSClient():
     CDS_API_URL = "https://cds.climate.copernicus.eu/api"
     
@@ -790,8 +1175,8 @@ class CDSClient():
         combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= min_start) & (combined_gdf['valid_time'] <= max_end)]
 
         return combined_gdf
-    
-    
+
+
 class BeaconDataClient():
     def __init__(self, beacon_cache_url: str, beacon_token: str | None = None) -> None:
         self.beacon_cache_url = beacon_cache_url
@@ -1277,9 +1662,7 @@ class MarsClient():
             # Add more mappings as needed
         }
         return param_codes.get(name)
-    
+
 class CordexClient():
     def __init__(self):
         pass
-    
-    
