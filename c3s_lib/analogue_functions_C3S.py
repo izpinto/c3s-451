@@ -1,6 +1,9 @@
 # Functions for analogues
 
 # import subprocess
+from typing import Any
+
+from matplotlib.colors import ListedColormap
 import iris
 import iris.coord_categorisation # type: ignore
 # from iris.coord_categorisation import add_season_membership
@@ -32,6 +35,7 @@ import cartopy.feature as cfeature
 from datetime import datetime
 import warnings
 from shapely.geometry import Polygon
+import mathplotlib
 
 
 class Analogues:
@@ -42,9 +46,13 @@ class Analogues:
         Analogues.ERA5FILESUFFIX : str = "_daily"    
 
     @staticmethod
-    def reanalysis_file_location(self) -> str:
+    def reanalysis_file_location() -> str:
         '''
         Return the location of the ERA5 data
+
+        Returns:
+            str:
+                location of the ERA5 NetCDF data files
         '''
         #CEX path 
         #return os.path.join(os.environ["CLIMEXP_DATA"],"ERA5")
@@ -52,19 +60,40 @@ class Analogues:
         return '/net/pc230042/nobackup/users/sager/nobackup_2_old/ERA5-CX-READY/'
 
     @staticmethod
-    def find_reanalysis_filename(var : str, daily : bool = True) -> str:
+    def find_reanalysis_filename(var:str, daily:bool=True) -> str:
         '''
         Return the field filename for a given variable
+
+        Parameters:
+            var (str):
+                Variable choice
+            daily (bool):
+                Daily values yes/no?
+
+        Returns:
+            str:
+                File path
         '''
+
         suffix : str = Analogues.ERA5FILESUFFIX
         path : str = os.path.join(Analogues.reanalysis_file_location(),"era5_{0}{1}.nc".format(var,suffix))
         return path
 
     @staticmethod
-    def event_data_era(event_data, date: list, ana_var: str) -> list:
+    def event_data_era(event_data:str, date: list, ana_var: str) -> list:
+
         '''
         Get ERA data for a defined list of variables on a given event date
+
+        Parameters:
+            event_data (str): Daily or extended
+            date (list): Selected date
+            ana_var (str): Variable to import
+
+        Returns
+            list: List of cubes for selected date
         '''
+
         event_list = []
         # TODO: Convert variable list into a non-local (possibly with a class?)
         if event_data == 'extended':
@@ -76,12 +105,19 @@ class Analogues:
         return event_list
 
     @staticmethod
-    def composite_dates_anomaly(P1_field, date_list):
+    def composite_dates_anomaly(P1_field:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
         '''
         Returns single composite of all dates
-        Inputs required:
-          P1_field = list of cubes, 1 per year - as used to calc D/date_list
-          date_list = list of events to composite
+        
+        Parameters:
+            P1_field (iris.cube.Cube):
+                list of cubes, 1 per year - as used to calc D/date_list
+            date_list (list):
+                list of events to composite
+        
+        Returns:
+            iris.cube.Cube:
+                To be added
         '''
         P1_field = P1_field - P1_field.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
         n = len(date_list)
@@ -102,10 +138,26 @@ class Analogues:
         return FIELD/n
 
     @staticmethod
-    def ED_similarity(event, P_cube, region, method):
+    def ED_similarity(event:iris.cube.Cube, P_cube:iris.cube.Cube, region:list[float], method:str):
+        
         '''
         Returns similarity values based on euclidean distance
+
+        Parameters:
+            event (iris.cube.Cube):
+                To be added
+            p_cube (iris.cube.Cube):
+                To be added
+            region (list[float]):
+                Region for data selecion
+            method (str):
+                Method chosen, either 'ED' or 'CC'
+
+        Returns:
+            list:
+                To be added
         '''
+
         E = Analogues.extract_region(event, region)
         P = Analogues.extract_region(P_cube, region)
         D = []
@@ -119,42 +171,86 @@ class Analogues:
         return S
 
     @staticmethod
-    def regrid(original, new):
-        ''' Regrids onto a new grid '''
+    def regrid(original:iris.cube.Cube, new:iris.cube.Cube) -> iris.cube.Cube:
+        '''
+        Regrids onto a new grid
+        
+        Parameters:
+            original (iris.cube.Cube):
+                Original cube
+            new (iris.cube.Cube):
+                New grid
+        
+        Returns:
+            iris.cube.Cube:
+                Regridded cube
+        '''
+
         mod_cs = original.coord_system(iris.coord_systems.CoordSystem)
         new.coord(axis='x').coord_system = mod_cs
         new.coord(axis='y').coord_system = mod_cs
         new_cube = original.regrid(new, iris.analysis.Linear())
+
         return new_cube
 
     @staticmethod
-    def extract_region(cube_list, R1, lat:str='latitude', lon:str='longitude'):
+    def extract_region(cube_list:iris.cube.Cube|iris.cube.CubeList,
+                       region:list[float], lat:str='latitude', lon:str='longitude'
+                       ) -> tuple[iris.cube.Cube|iris.cube.CubeList, str, str]:
         '''
-        Extract Region (defaults to Europe)
+        Extract region using boundering box (defaults to Europe)
+
+        Parameters:
+            cube_list (iris.cube.Cube|iris.cube.Cube):
+                Iris cube or cubelist
+            region (list[float]):
+                Region to extract
+            lat (str):
+                Latitude column
+            lon (str):
+                Longitude column
+                reg_cubes (iris.cube.Cube|iris.cube.CubeList):
+                
+        Returns:
+            reg_cubes (iris.cube.Cube|iris.cube.CubeList):
+                Iris cube or cubelist consisting of only the extracted region
+            lat (str):
+                Latitude column
+            lon (str):
+                Longitude column
         '''
-        const_lat = iris.Constraint(latitude = lambda cell:R1[1] < cell < R1[0])
+
+        const_lat = iris.Constraint(latitude = lambda cell:region[1] < cell < region[0])
         if isinstance(cube_list, iris.cube.Cube):
             reg_cubes_lat = cube_list.extract(const_lat)
-            reg_cubes = reg_cubes_lat.intersection(longitude=(R1[3], R1[2]))
+            reg_cubes = reg_cubes_lat.intersection(longitude=(region[3], region[2]))
         elif isinstance(cube_list, iris.cube.CubeList):
             reg_cubes = iris.cube.CubeList([])
             for each in range(len(cube_list)):
                 # print(each)
                 subset = cube_list[each].extract(const_lat)
-                reg_cubes.append(subset.intersection(longitude=(R1[3], R1[2])))
+                reg_cubes.append(subset.intersection(longitude=(region[3], region[2])))
                 
         return Analogues.guess_bounds(reg_cubes, lat=lat, lon=lon)
 
     @staticmethod
-    def euclidean_distance(field, event):
+    def euclidean_distance(field:iris.cube.Cube, event:iris.cube.Cube) -> list:
         '''
-        Returns list of D
-        Inputs required:
-          field = single cube of analogues field.
-          event = cube of single day of event to match.
-          BOTH MUST HAVE SAME DIMENSIONS FOR LAT/LON
-          AREA WEIGHTING APPLIED
+        Returns list of euclidean distances
+        BOTH MUST HAVE SAME DIMENSIONS FOR LAT/LON
+        AREA WEIGHTING APPLIED
+
+        Parameters:
+            field (iris.cube.Cube):
+                single cube of analogues field.
+            event (iris.cube.Cube):
+                cube of single day of event to match.
+            
+        Returns:
+            list:
+                List of euclidean distances
         '''
+
         D= [] # to be list of all euclidean distances
         if event.coord('latitude').has_bounds():
             pass
@@ -175,10 +271,23 @@ class Analogues:
         return D
 
     @staticmethod
-    def reanalysis_data(var, Y1=1950, Y2=2023, months='[Jan]'):
+    def reanalysis_data(var:str, Y1:int=1950, Y2:int=2023, months:list[str]=['Jan']) -> iris.cube.Cube:
         '''
         Loads in reanalysis daily data
-        VAR can be psi250, msl, or tp (to add more)
+
+        Parameters:
+            var (str):
+                VAR can be psi250, msl, or tp (to add more)
+            Y1 (int):
+                Start year
+            Y2 (int):
+                End year
+            months (list[str]):
+                Months to subset
+
+        Returns:
+            cube (iris.cube.Cube):
+                Iris cube containing the selected variable for months from Y1 to Y2
         '''
         cubes = iris.load(Analogues.find_reanalysis_filename(var), var)
         try:
@@ -193,31 +302,64 @@ class Analogues:
         return cube
 
     @staticmethod
-    def anomaly_period_outputs(Y1, Y2, ana_var, N, date, months, R1):
+    def anomaly_period_outputs(Y1:int, Y2:int, ana_var:str, N:int,
+                               date:list, months:list[str], region:list[float]
+                               ) -> list:
         '''
-        Function to identify the N closest analogues of (N: number)
-        date between (date format: [YYYY, 'Mon', DD], e.g. [2021, 'Jul', 14])
-        Y1 and Y2, (year between 1950 and 2023)
-        for 'event' 
+        Function to identify the N closest analogues of for event
+
+        Parameters:
+            Y1 (int):
+                Start year
+            Y2 (int):
+                End year
+            ana_var (str):
+                Variable
+            N (int):
+                Number of analogues
+            date (list):
+                date format: [YYYY, 'Mon', DD], e.g. [2021, 'Jul', 14])
+            months (list[str]):
+                Months
+            region (list[float]):
+                Region
+        
+        Returns:
+            P1_dates (list):
+                To be added
         '''
         P1_msl = Analogues.reanalysis_data(ana_var, Y1, Y2, months) # Get ERA5 data, Y1 to Y2, for var and season chosen. Global.
-        P1_field = Analogues.extract_region(P1_msl, R1) # Extract the analogues domain (R1) from global field
+        P1_field = Analogues.extract_region(P1_msl, region) # Extract the analogues domain (R1) from global field
         ### difference for anomaly version
         P1_spatialmean = P1_field.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)   # Calculate spatial mean for each day
         P1_field = P1_field - P1_spatialmean # Remove spatial mean from each day
         event = Analogues.reanalysis_data_single_date(ana_var, date)
-        E = Analogues.extract_region(event, R1) # Extract domain for event field
+        E = Analogues.extract_region(event, region) # Extract domain for event field
         E = E - E.collapsed(['latitude', 'longitude'], iris.analysis.MEAN) # remove spatial mean for event field
         ###
-        P1_dates = Analogues.analogue_dates_v2(E, P1_field, R1, N*5)[:N] # calculate the closest analogues
+        P1_dates = Analogues.analogue_dates_v2(E, P1_field, region, N*5)[:N] # calculate the closest analogues
         if str(date[0])+str("{:02d}".format(list(calendar.month_abbr).index(date[1])))+str(date[2]) in P1_dates: # Remove the date being searched for
             P1_dates.remove(str(date[0])+str("{:02d}".format(list(calendar.month_abbr).index(date[1])))+str(date[2]))
         return P1_dates
 
     @staticmethod
-    def cube_date(cube):
+    def cube_date(cube:iris.cube.Cube):
         '''
         Returns date of cube (assumes cube single day)
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube
+
+        Returns:
+            year (int):
+                Year
+            month (int|str):
+                Month
+            day (int):
+                Day
+            time (any):
+                Time
         '''
         if len(cube.coords('year')) > 0:
            pass
@@ -242,12 +384,23 @@ class Analogues:
         return year, month, day, time
 
     @staticmethod
-    def date_list_checks(date_list, days_apart=5):
+    def date_list_checks(date_list:list, days_apart:int=5):
         '''
         Takes date_list and removes:
-         1) the original event (if present)
-         2) any days within 5 days of another event
+        1) the original event (if present)
+        2) any days within 5 days of another event
+
+        Parameters:
+            date_list (list):
+                List of dates
+            days_apart (int):
+                To be added
+        
+        Returns:
+            list:
+                New list of dates
         '''
+
         import datetime
         dates = []
         for each in date_list:
@@ -264,7 +417,26 @@ class Analogues:
         return new_dates_list
 
     @staticmethod
-    def eucdist_of_datelist(event, reanalysis_cubelist, date_list, region):
+    def eucdist_of_datelist(event:iris.cube.Cube, reanalysis_cubelist:iris.cube.Cube|iris.cube.CubeList,
+                            date_list:list, region:list[float]) -> list:
+        '''
+        To be added
+
+        Parameters:
+            event (iris.cube.Cube):
+                To be added
+            reanalysis_cubelist (iris.cube.Cube|iris.cube.CubeList):
+                To be added
+            date_list (list):
+                To be added
+            region (list[float]):
+                To be added
+
+        Returns:
+            list:
+                To be added
+        '''
+
         ED_list = []
         E = Analogues.extract_region(event, region)
         if E.coord('latitude').has_bounds():
@@ -291,12 +463,38 @@ class Analogues:
         return ED_list
 
     @staticmethod
-    def analogue_dates_v2(event, reanalysis_cube, region, N):
+    def analogue_dates_v2(event:iris.cube.Cube, reanalysis_cube:iris.cube.Cube,
+                          region:list[float], N:int) -> list:
+        
         '''
+        Identify analogue dates based on minimum Euclidean distance to an event field.
+
+        The function extracts a specified region from both the event field and the
+        reanalysis dataset, computes the Euclidean distance between the event and
+        each reanalysis time slice, and returns the dates corresponding to the
+        N closest analogue fields. A minimum temporal separation between returned
+        dates is enforced.
+    
+        Parameters:
+            event (iris.cube.Cube):
+                Event field used as the reference for analogue selection.
+            reanalysis_cube (iris.cube.Cube):
+                Reanalysis dataset containing candidate analogue fields.
+            region (list[float]):
+                Spatial region to extract, typically given as
+            N (int):
+                Number of analogue dates to identify.
+    
+        Returns:
+            date_list2 (list[str]):
+                List of analogue dates in YYYYMMDD string format, filtered to ensure
+                a minimum separation in time between events.
         '''
-        def cube_date_to_string(cube_date : tuple) -> tuple:
+        
+        def cube_date_to_string(cube_date:tuple) -> tuple:
             year,month,day,time = cube_date
             return str(year)+str(month).zfill(2)+str(day).zfill(2), time
+        
         E = Analogues.extract_region(event, region)
         reanalysis_cube = Analogues.extract_region(reanalysis_cube, region)
         D = Analogues.euclidean_distance(reanalysis_cube, E)
@@ -314,7 +512,33 @@ class Analogues:
         return date_list2
 
     @staticmethod
-    def pull_out_day_era(psi, sel_year, sel_month, sel_day):
+    def pull_out_day_era(psi:iris.cube.Cube, sel_year:int, sel_month:str|int, sel_day:int) -> iris.cube.Cube:
+
+        """
+        Extract a single daily field for a given date from ERA reanalysis data.
+
+        The function accepts either a single Iris cube or an iterable of cubes.
+        It searches for the specified year, month, and day, and returns the
+        corresponding daily field if present.
+
+        Parameters:
+            psi (iris.cube.Cube or iterable of iris.cube.Cube):
+                Reanalysis data from which to extract the requested day.
+            sel_year (int):
+                Year to extract.
+            sel_month (str):
+                Month abbreviation (e.g. 'Jan', 'Feb', ...).
+            sel_day (int):
+                Day of the month.
+
+        Returns:
+            psi_day (iris.cube.Cube):
+                Cube containing data for the selected date.
+
+            None:
+                Returned if the requested date is not present in the data.
+        """
+
         if type(psi)==iris.cube.Cube:
             psi_day = Analogues.extract_date(psi, sel_year, sel_month, sel_day)
         else:
@@ -334,32 +558,58 @@ class Analogues:
             return
 
     @staticmethod
-    def extract_date(cube, yr, mon, day):
-       '''
-       Extract specific day from cube of a single year
-       '''
-       if len(cube.coords('year')) > 0:
-           pass
-       else:
-           iris.coord_categorisation.add_year(cube, 'time')
-       if len(cube.coords('month')) > 0:
-           pass
-       else:
-           iris.coord_categorisation.add_month(cube, 'time')
-       if len(cube.coords('day_of_month')) > 0:
-           pass
-       else:
-           iris.coord_categorisation.add_day_of_month(cube, 'time')
-       return cube.extract(iris.Constraint(year=yr, month=mon, day_of_month=day))
+    def extract_date(cube:iris.cube.Cube, yr:int, mon:str|int, day:int) -> iris.cube.Cube:
+        '''
+        Extract specific day from cube of a single year
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube with daily values
+            year (int):
+                Year
+            month (str|int):
+                Month
+            day (int):
+                Day
+        
+        Returns:
+            iris.cube.Cube:
+                Iris cube of a single date
+        '''
+        if len(cube.coords('year')) > 0:
+            pass
+        else:
+            iris.coord_categorisation.add_year(cube, 'time')
+        if len(cube.coords('month')) > 0:
+            pass
+        else:
+            iris.coord_categorisation.add_month(cube, 'time')
+        if len(cube.coords('day_of_month')) > 0:
+            pass
+        else:
+            iris.coord_categorisation.add_day_of_month(cube, 'time')
+        return cube.extract(iris.Constraint(year=yr, month=mon, day_of_month=day))
 
     @staticmethod
-    def composite_dates(psi, date_list):
-        '''
-        Returns single composite of all dates
-        Inputs required:
-          psi = list of cubes, 1 per year - as used to calc D/date_list
-          date_list = list of events to composite
-        '''
+    def composite_dates(psi:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
+        """
+        Returns a single composite field from a list of event dates.
+
+        The function extracts the daily field corresponding to each date in
+        ``date_list`` from the input cube and computes the mean composite.
+        Dates that are not present in the data are skipped.
+
+        Parameters:
+            psi(iris.cube.Cube):
+                Reanalysis data cube containing daily fields spanning multiple years.
+            date_list (list):
+                List of event dates in YYYYMMDD string format to be composited.
+
+        Returns:
+            composite (iris.cube.Cube):
+                Mean composite field averaged over all valid dates.
+        """
+
         n = len(date_list)
         FIELD = 0
         for each in range(n):
@@ -378,11 +628,21 @@ class Analogues:
         return FIELD/n
 
     @staticmethod
-    def reanalysis_data_single_date(var : str, date : list):
+    def reanalysis_data_single_date(var:str, date:list) -> iris.cube.Cube:
         '''
-        Loads in reanalysis daily data
-        VAR can be: msl, or tp (to add more)
+        Loads in reanalysis daily data for single date
+
+        Parameters:
+            var (str):
+                Either 'z500', 'msl', 't2m', 'tp'.... more to be added
+            date (list):
+                Date to extract
+        
+        Returns:
+            iris.cube.Cube:
+                Iris cube containing a single date
         '''
+
         filename = Analogues.find_reanalysis_filename(var)
         # print("Read file: {} for date {}".format(filename,date))
         cube = iris.load(filename, var)[0]
@@ -390,9 +650,27 @@ class Analogues:
         return cube
 
     @staticmethod
-    def quality_analogs(field, date_list, N, analogue_variable, region):
+    def quality_analogs(field:iris.cube.Cube, date_list:list, N:int,
+                        analogue_variable:str, region:list[float]
+                        ) -> list:
         '''
         For the 30 closest analogs of the event day, calculates analogue quality
+
+        Parameters;
+            field (iris.cube.Cube):
+                Iris cube
+            date_list (list):
+                List of cubes
+            N (int):
+                Number of analogues?
+            analogue_variable (str):
+                Variable
+            region (list[float]):
+                Region to subset the data on
+        
+        Returns:
+            list:
+                Quality list
         '''
         Q = []
         filename = Analogues. find_reanalysis_filename(analogue_variable)
@@ -852,7 +1130,7 @@ class Analogues:
 
     # J: add return type
     @staticmethod
-    def analogues_composite_v2(cube:iris.cube.Cube, dates:list):
+    def analogues_composite_v2(cube:iris.cube.Cube, dates:list) -> Any|float:
         '''
         To be added
 
@@ -861,7 +1139,7 @@ class Analogues:
             dates (list): List of dates
 
         Returns:
-            To be added
+            Any|float: To be added
         '''
 
         P1_comp = Analogues.composite_dates(cube, dates) # composite analogues
@@ -870,16 +1148,24 @@ class Analogues:
     # J: add return type
     # correlation value
     @staticmethod
-    def var_correlation(var_cube:iris.cube.Cube, correlation_cube:iris.cube.Cube):
+    def var_correlation(var_cube:iris.cube.Cube, correlation_cube:iris.cube.Cube) -> tuple[iris.cube.Cube, np.ndarray, np.ndarray]:
         '''
         Calculates the correlation between var_cube and correlation_cube
 
         Parameters:
-            var_cube (iris.cube.Cube): Cube with daily values of variable t2m or tp
-            correlation_cube (iris.cube.Cube): Cube with daily values of variable z500 or slp/msl
+            var_cube (iris.cube.Cube):
+                Cube with daily values of variable t2m or tp
+            correlation_cube (iris.cube.Cube):
+                Cube with daily values of variable z500 or slp/msl
 
         Returns:
-            To be added
+            z_data (iris.cube.Cube):
+                To be added
+            corr_field (np.ndarray):
+                To be added
+            p_field (np.ndarray):
+                To be added
+                
         '''
 
         z_data = correlation_cube 
@@ -902,10 +1188,12 @@ class Analogues:
         Calculates the impact index over the cube
 
         Parameters:
-            cube (iris.cube.Cube): Spatial extent of index
+            cube (iris.cube.Cube):
+                Spatial extent of index
 
         Returns:
-            To be added
+            iris.cube.Cube:
+                To be added
         '''
         grid_areas = iris.analysis.cartography.area_weights(cube)
         cube.data = ma.masked_invalid(cube.data)
@@ -917,9 +1205,17 @@ class Analogues:
 
     # adds background to plots
     @staticmethod
-    def background(ax):
+    def background(ax:mathplotlib.axes.Axes) -> mathplotlib.axes.Axes:
         '''
         Adds background to given plot (ax)
+
+        Parameters:
+            ax (mathplotlib.axes.Axes):
+                Plot axes to add background to
+
+        Returns:
+            ax (mathplotlib.axes.Axes):
+                Plot axes with background added
         '''
 
         ax.coastlines(linewidth=0.4)
@@ -931,11 +1227,39 @@ class Analogues:
 
     # Plot map of correlation
     @staticmethod
-    def plot_correlation_map(z_data, z500_correlation, slp_correlation, region, z500_domain,
-                             slp_domain, draw_labels:bool=True, fig_size:tuple[float, float]=(10,10)):
+    def plot_correlation_map(z_data:iris.cube.Cube, z500_correlation:np.ndarray,
+                             slp_correlation:np.ndarray,region:list[float],
+                             z500_domain: list[float], slp_domain:list[float],
+                             draw_labels:bool=True, fig_size:tuple[float, float]=(10,10)
+                            ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
 
         '''
         Plots the correlation figures for z500 and slp
+
+        Parameters:
+            z_data (iris.cube.Cube):
+                Event data
+            z500_correlation (np.ndarray):
+                z500 correlation data
+            slp_correlation (np.npdarray):
+                slp correlation data
+            region (list[float]):
+                Event region
+            z500_domain (list[float]):
+                z500 region
+            slp_domain (list[float]):
+                slp region
+            draw_labels (bool):
+                Draw labels?
+            fig_size (tuple[float, float]):
+                Figure size
+
+        Returns:
+            fig (matplotlib.figure.Figure):
+                Correlation map figure
+            ax (mathplotlib.axes.Axes):
+                Correlation map plot
+
         '''
 
         fig, ax = plt.subplots(2, 1, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=fig_size)
@@ -969,15 +1293,45 @@ class Analogues:
 
     # Violin Plot (to visually check the result)
     @staticmethod
-    def violin_plot(Haz:str, II_event, II_z500, II_slp, fig_size:tuple[float, float]=(2.5, 2.5)):
+    def violin_plot(Haz:str, II_event:iris.cube.Cube, II_z500:list, II_slp:list,
+                    fig_size:tuple[float, float]=(2.5, 2.5)
+                    ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+
+        '''
+        Violin plot to visually check the result
+
+        Parameters:
+            Haz (str):
+                Event variable, either 't2m' or 'tp'
+            II_event (iris.cube.Cube):
+                Event value plotted as a horizontal reference line
+            II_z500 (list):
+                Distribution of z500 index values
+            II_slp (list):
+                Distribution of slp index values
+            fig_size (tuple[float, float]):
+                Figure size
+        
+        Returns:
+            fig (mathplotlib.figure.Figure):
+                Figure of the violin plot
+            axs (mathplotlib.axes.Axes):
+                Violin plot
+        
+        '''
+
         fig, axs = plt.subplots(nrows=1, ncols=1, figsize=fig_size)
+
         plots = axs.violinplot([II_z500, II_slp], showmeans=True, showextrema=False, widths = .8)
         plots["bodies"][1].set_facecolor('green')
+
         axs.axhline(II_event, color='r', label = 'Event')
         axs.set_xticks([1,2], labels=['Z500', 'SLP'])
         axs.tick_params(axis='x', length=0)
+
         if Haz == 't2m': axs.set_ylabel('Temperature (K)')
         if Haz == 'tp': axs.set_ylabel('Daily Rainfall (mm)')
+
         t, p = stats.ttest_ind(II_z500, II_slp, equal_var=False, alternative='two-sided')
         if p < 0.05:
             axs.set_title(('%.2f'%t), pad=-20, loc='left', fontweight="bold")
@@ -988,8 +1342,34 @@ class Analogues:
 
     # Shown for larger range of analogue proportions
     @staticmethod
-    def plot_analogue_proportions(II_event, II_z500, II_slp, N,
-                                  fig_size:tuple[float,float]=(2.5, 2.5), xlim:float=10):
+    def plot_analogue_proportions(II_event:iris.cube.Cube, II_z500:list, II_slp:list, N:int,
+                                  fig_size:tuple[float,float]=(2.5, 2.5), xlim:int=10
+                                  ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+        
+        '''
+        Show the larger range of analogue proportions as a line graph
+
+        Parameters:
+            II_event (iris.cube.Cube):
+                Event value plotted as a horizontal reference line
+            II_z500 (list):
+                Distribution of z500 index values
+            II_slp (list):
+                Distribution of slp index values
+            N (int):
+                Number of analogues, used as right horizontal plot limit
+            fig_size (tuple[float, float]):
+                Figure size
+            xlim (int): 
+                Left horizontal plot limit
+
+        Returns:
+            fig (mathplotlib.figure.Figure):
+                Figure of the line graph
+            axs (mathplotlib.axes.Axes):
+                Line graph plot
+        
+        '''
 
         meanT = []
         for i in np.arange(len(II_z500)):
@@ -1013,8 +1393,34 @@ class Analogues:
 
     # Plot: Analogue variable
     @staticmethod
-    def plot_analogue_variable(ana_var:str, event_cube, selected_daily_cube,
-                               dates_past, dates_prst, event_date):
+    def plot_analogue_variable(ana_var:str, event_cube:iris.cube.Cube, selected_daily_cube:iris.cube.Cube,
+                               dates_past:list, dates_prst:list, event_date:list
+                               ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+        
+        '''
+        Plots the analogue variable for the event date, past, and present
+
+        Parameters:
+            ana_var (str):
+                Analogue variable, either 'z500' or 'slp'
+            event_cube (iris.cube.Cube):
+                Single day cube of the selected variable, either 'z500' or 'slp'
+            selected_daily_cube (iris.cube.Cube):
+                Cube of the selected variable, either 'z500' or 'slp', with daily values
+            dates_past (list):
+                Past dates
+            dates_prst (list):
+                Present dates
+            event_date (list):
+                Date of the event
+        
+        Returns:
+            fig (mathplotlib.figure.Figure):
+                Figure
+            ax (mathplotlib.axes.Axes):
+                plot
+        '''
+
 
         # EVENT FIELDS
         event_cube = event_cube - event_cube.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
@@ -1061,19 +1467,58 @@ class Analogues:
 
         return fig, ax
 
-    # J: again redundant data imports and region extractions?
     @staticmethod
-    def plot_z500_slp_t2m_tp(ana_var, var_list:list[str], cube_map:dict[str, any], 
-                             R2:list[float], region:list[float],
-                             sig_field, event_date, dates_past, dates_prst,
-                             fig_size:tuple[float, float]=(12,12), dpi:int=200):
+    def plot_z500_slp_t2m_tp(ana_var:str, var_list:list[str], cube_map:dict[str, iris.cube.Cube], 
+                             R2:list[float], region:list[float], sig_field:list,
+                             event_date:list, dates_past:list, dates_prst:list,
+                             fig_size:tuple[float, float]=(12,12), dpi:int=200
+                             ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+        
+        '''
+        Plot 4 figures (event, past, present, change) for 'z500', 'slp', 't2m', and 'tp'
+        'z500': unit type?
+        'slp': unity type?
+        't2m': degrees Celcius
+
+        Parameters:
+            ana_var (str):
+                'z500' or 'slp'
+            var_list (list[str]):
+                List specifying the order of variables to plot, 'z500', 'slp', 't2m', and 'tp'
+            cube_map (dict[str, iris.cube.Cube]):
+                Dictionary with daily cube data for 'z500', 'slp', 't2m' and 'tp'
+            R2 (list[float]):
+                Region used for selecting the data
+            region (list[float]):
+                Region used for drawing the event
+            sig_field (list):
+                Single composite of all dates
+            event_date (list):
+                Date of the event
+            dates_past (list):
+                Past dates
+            dates_prst (list):
+                Present dates
+            fig_size (tuple[float, float]):
+                Figure size
+            dpi (int):
+                Dots per inch
+        
+        Returns:
+            fig (mathplotlib.figure.Figure):
+                Figure of the plots
+            ax (mathplotlib.axes.Axes):
+                Plot object
+
+        '''
 
         # Plot: Z500, SLP, t2m, tp (ToDo: +winds when ERA5 not extended)
         # Z500 plotted as anomalies (to remove the influence of the longterm trend)
         fig = plt.figure(figsize=fig_size, layout='constrained', dpi=dpi)
 
+        # J: replace msl with slp
         for i, var in enumerate(var_list):
-            if var == 'z500' or var == 'msl': CMAP = ["RdBu_r", "RdBu_r"]
+            if var == 'z500' or (var == 'msl' or var == 'slp'): CMAP = ["RdBu_r", "RdBu_r"]
             if var == 'tp': CMAP = ["YlGnBu", "BrBG"]
             if var == 't2m': CMAP = ["YlOrRd", "RdYlBu_r"]
 
@@ -1102,7 +1547,7 @@ class Analogues:
                 PAST_comp = PAST_comp * 0.0980665 # adjust for gravity?
                 PRST_comp = PRST_comp * 0.0980665
                 event_cube = event_cube * 0.0980665
-            if var == 'msl':
+            if var == 'msl' or var == 'slp':
                 PAST_comp = PAST_comp * .01   # adjust for?
                 PRST_comp = PRST_comp * .01
                 event_cube = event_cube * .01    
@@ -1114,7 +1559,7 @@ class Analogues:
 
             lats=PRST_comp.coord('latitude').points
             lons=PRST_comp.coord('longitude').points 
-            if var == 'z500' or var == 'msl':  
+            if var == 'z500' or (var == 'msl' or var == 'slp'):  
                 con_lev = np.round(np.arange(np.min([PAST_comp.data, PRST_comp.data, event_cube.data]), np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
                 #con_lev = np.round(np.arange(-abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), 2))
             if var == 't2m':
@@ -1184,7 +1629,36 @@ class Analogues:
 
     @staticmethod
     def plot_frequency_timeseries(yr_vals:list, roll_vals:list, Y1:int, Y2:int,
-                                  fig_size:tuple[float,float]=(8,4)):
+                                  fig_size:tuple[float,float]=(8,4)
+                                  ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes, list, list]:
+        
+        '''
+        To be added
+        
+        Parameters:
+            yr_vals (list):
+                To be added
+            roll_vals (list):
+                To be added
+            Y1 (int):
+                Start year for analysis range
+            Y2 (int):
+                Eng year for analysis range
+            fig_size (tuple[float, float]):
+                Figure size
+        
+        Returns:
+            fig (mathplotlib.figure.Figure):
+                Figure
+            ax (mathplotlib.axes.Axes):
+                Plot
+            list:
+                List of slope values for upper 5%, 10% and 20%
+            list:
+                List of p values for upper 5%, 10% and 20%
+
+        '''
+
         # Plot timeseries with linear trends and 10-yr rolling means
         fig, ax = plt.subplots(1, 1, figsize = fig_size)
 
@@ -1235,9 +1709,48 @@ class Analogues:
         # circ_plot = 0 # 1: plots circulation contours, 0: does not
 
     @staticmethod
-    def plot_postage_stamps(ana_var:str, haz_var:str, cube_map, event_date,
-                            region, cmap, dates_past, circ_past, haz_past,
-                            circ_plot, n, fig_size:tuple[float, float]=(12,12)):
+    def plot_postage_stamps(ana_var:str, haz_var:str, cube_map:dict[str, iris.cube.Cube], event_date:list,
+                            region:list, cmap:ListedColormap, dates_plot:list,
+                            circ_past:iris.cube.CubeList, haz_past:iris.cube.CubeList,
+                            circ_plot:int, n:int, fig_size:tuple[float, float]=(12,12)
+                            ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+        
+        '''
+        To be added
+
+        Parameters:
+            ana_var (str):
+                Either 'z500' or 'slp'
+            haz_var (str):
+                Either 't2m' or 'tp'
+            cube_map (dict[str, iris.cube.Cube]):
+                Dictionary containing cubes with daily values for 'z500', 'slp', 't2m', and 'tp'
+            event_date (list):
+                Date of the event
+            region (list):
+                Region selection for the plot
+            cmap (ListedColormap):
+                Colormap
+            dates_plot (list):
+                Dates to plot
+            circ_past (iris.cube.CubeList):
+                To be added
+            haz_past (iris.cube.CubeList):
+                To be added
+            circ_plot (int):
+                To be added
+            n (int):
+                Number of dates
+            fig_size (tuple[float, float]):
+                Figure size
+        
+        Returns:
+            fig (mathplotlib.figure.Figure):
+                Figure
+            ax (mathplotlib.axes.Axes):
+                Plot            
+        
+        '''
 
         # Past dates plot
         lats=circ_past[0].coord('latitude').points
@@ -1302,7 +1815,7 @@ class Analogues:
 
             ax.add_feature(cfeature.BORDERS, color='grey')
             ax.add_feature(cfeature.COASTLINE, color='grey')
-            ax.set_title('Analogue: '+str(dates_past[i][-2:])+calendar.month_abbr[int(dates_past[i][4:-2])]+str(dates_past[i][:4]), loc='left',
+            ax.set_title('Analogue: '+str(dates_plot[i][-2:])+calendar.month_abbr[int(dates_plot[i][4:-2])]+str(dates_plot[i][:4]), loc='left',
                          fontsize=8)
 
         return fig, axs
@@ -1313,7 +1826,24 @@ class Analogues:
 
     # guess bounds
     @staticmethod
-    def guess_bounds(cube, lat:str='latitude', lon:str='longitude'):
+    def guess_bounds(cube:iris.cube.Cube, lat:str='latitude', lon:str='longitude') -> iris.cube.Cube:
+
+        '''
+        Guess the bounds for an iris cube when no bounds are present
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube
+            lat (str):
+                Latitude column
+            lon (str):
+                Longitude column
+
+        Returns:
+            cube (iris.cube.Cube):
+                Iris cube with bounds
+        '''
+
         if not cube.coord(lat).has_bounds():
             cube.coord(lat).guess_bounds()
         if not cube.coord(lon).has_bounds():
@@ -1322,7 +1852,24 @@ class Analogues:
         return cube
 
     @staticmethod
-    def remove_bounds(cube, lat:str='latitude', lon:str='longitude'):
+    def remove_bounds(cube:iris.cube.Cube, lat:str='latitude', lon:str='longitude') -> iris.cube.Cube:
+
+        '''
+        Remove the bounds for an iris cube when bounds are present
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube
+            lat (str):
+                Latitude column
+            lon (str):
+                Longitude column
+
+        Returns:
+            cube (iris.cube.Cube):
+                Iris cube without bounds
+        '''
+
         if cube.coord(lat).has_bounds():
             cube.coord(lat).bounds = None
         if cube.coord(lon).has_bounds():
@@ -1332,8 +1879,33 @@ class Analogues:
 
     # get the ana_van and haz_var values for a range of single dates
     @staticmethod
-    def ana_and_haz_date_values(ana_var:str, haz_var:str, cube_map,
-                                region:list[float], dates:list):
+    def ana_and_haz_date_values(ana_var:str, haz_var:str, cube_map:dict[str, iris.cube.Cube],
+                                region:list[float], dates:list
+                                ) -> tuple[iris.cube.CubeList,iris.cube.CubeList , int]:
+
+        '''
+        Get the ana_van and haz_var values for a range of single dates
+
+        Parameters:
+            ana_var (str):
+                Either 'z500' or 'slp'
+            haz_var (str):
+                Either 't2m' or 'tp'
+            cube_map (dict[str, iris.cube.Cube]):
+                Dictionary containing iris cubes with daily values for 'z500', 'slp', 't2m', and 'tp'
+            region (list[float]):
+                Region to subset cubes on
+            dates (list):
+                List of dates
+        
+        Returns:
+            circ_vals (iris.cube.CubeList):
+                To be added
+            haz_vals (iris.cube.CubeList):
+                To be added
+            n (int):
+                Number of dates
+        '''
 
         # Prst date fields
         circ_vals = iris.cube.CubeList([])
@@ -1354,7 +1926,30 @@ class Analogues:
 
     # values for variable choice
     @staticmethod
-    def variable_choice_values(cube, event_date, dates_z500, dates_slp):
+    def variable_choice_values(cube:iris.cube.Cube, event_date:list,
+                               dates_z500:list, dates_slp:list
+                               ) -> tuple[iris.cube.Cube, list, list]:
+        '''
+        To be added
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube containing daily values, either 't2m' or 'tp'
+            event_date (list):
+                Date of the event
+            dates_z500 (list):
+                z500 dates
+            dates_slp (list):
+                slp dates
+
+        Returns:
+            II_event (iris.cube.Cube):
+                To be added
+            II_z500 (list):
+                To be added
+            II_slp (list):
+                To be added
+        '''
 
         II_event = Analogues.impact_index_v2(Analogues.extract_date_v2(cube, event_date))
 
@@ -1374,7 +1969,8 @@ class Analogues:
     # excess
     ######################################################################################
 
-    # J: this function is never used
+    # J: this function is never used but was in one of the analogues
+    # J: to be removed
     @staticmethod
     def plot_specified_date(axs, fig, ax, date, title, ana_var, haz_var, R1): 
         circ = Analogues.extract_region(Analogues.reanalysis_data_single_date(ana_var, date), R1)
