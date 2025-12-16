@@ -686,27 +686,40 @@ class Analogues:
         return Q
 
     @staticmethod
-    def diff_significance(field1, dates1, field2, dates2):
+    def diff_significance(cube_past:iris.cube.Cube, dates_past:list,
+                          cube_prst:iris.cube.Cube, dates_prst:list) -> iris.cube.Cube:
         '''
         Returns single composite of all dates
-        Inputs required:
-          field1 / 2 = cube of variable in period 1 /2
-          dates1 / 2 = list of dates in period 1/2
-        '''    
-        n = len(dates1)
+
+        Parameters:
+            cube_past (iris.cube.Cube):
+                Iris cube with daily data of either 'z500', 'slp', t2m', or 'tp'
+            dates_past (list):
+                List of past dates used for cube_past
+            cube_prst (iris.cube.Cube):
+                Iris cube with daily data of either 'z500', 'slp', t2m', or 'tp'
+            dates_prst (list):
+                List of present dates used for cube_prst
+            
+        Returns
+            iris.cube.Cube:
+                Iris cube composite of all dates (dates_past & dates_prst)
+        '''   
+
+        n = len(dates_past)
         field_list1 = iris.cube.CubeList([])
         for each in range(n):
-            year = int(dates1[each][:4])
-            month = calendar.month_abbr[int(dates1[each][4:-2])]
-            day = int(dates1[each][-2:])
-            field_list1.append(Analogues.pull_out_day_era(field1, year, month, day))
-        n = len(dates2)
+            year = int(dates_past[each][:4])
+            month = calendar.month_abbr[int(dates_past[each][4:-2])]
+            day = int(dates_past[each][-2:])
+            field_list1.append(Analogues.pull_out_day_era(cube_past, year, month, day))
+        n = len(dates_prst)
         field_list2 = iris.cube.CubeList([])
         for each in range(n):
-            year = int(dates2[each][:4])
-            month = calendar.month_abbr[int(dates2[each][4:-2])]
-            day = int(dates2[each][-2:])
-            field_list2.append(Analogues.pull_out_day_era(field2, year, month, day))    
+            year = int(dates_prst[each][:4])
+            month = calendar.month_abbr[int(dates_prst[each][4:-2])]
+            day = int(dates_prst[each][-2:])
+            field_list2.append(Analogues.pull_out_day_era(cube_prst, year, month, day))    
         sig_field = field_list1[0].data
         a, b = np.shape(field_list1[0].data)
         for i in range(a):
@@ -729,20 +742,28 @@ class Analogues:
         return result_cube
 
     @staticmethod
-    def composite_dates_ttest(field, date_list):
+    def composite_dates_ttest(cube:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
         '''
         Returns single composite of all dates
-        Inputs required:
-          field = cube of field
-          date_list = list of events to composite
+        
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube with daily data of either 'z500', 'slp', t2m', or 'tp'
+            date_list (list):
+                List of dates
+
+        Returns:
+            iris.cube.Cube:
+                Iris cube of all dates
         '''
+
         n = len(date_list)
         field_list = iris.cube.CubeList([])
         for each in range(n):
             year = int(date_list[each][:4])
             month = calendar.month_abbr[int(date_list[each][4:-2])]
             day = int(date_list[each][-2:])
-            field_list.append(Analogues.pull_out_day_era(field, year, month, day))
+            field_list.append(Analogues.pull_out_day_era(cube, year, month, day))
         sig_field = field_list[0].data
         a, b = np.shape(field_list[0].data)
         for i in range(a):
@@ -761,12 +782,22 @@ class Analogues:
         return result_cube
 
     @staticmethod
-    def impact_index(cube, II_domain):
+    def impact_index(cube:iris.cube.Cube, region:list[float]) -> np.ma.MaskedArray:
         '''
         Calculates the impact index over the cube
-        II_domain: spatial extent of index
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube with daily data of either 'z500', 'slp', t2m', or 'tp'
+            region (list[float]):
+                Region used for subsetting
+        
+        Returns:
+            np.ma.MaskedArray:
+                Impact index iris cube
         '''
-        cube = Analogues.extract_region(cube, II_domain)
+
+        cube = Analogues.extract_region(cube, region)
         cube.coord('latitude').guess_bounds()
         cube.coord('longitude').guess_bounds()
         grid_areas = iris.analysis.cartography.area_weights(cube)
@@ -774,14 +805,23 @@ class Analogues:
         return cube.collapsed(('longitude','latitude'),iris.analysis.MEAN,weights=grid_areas).data
 
     @staticmethod
-    def analogues_list(cube, date_list):
+    def analogues_list(cube:iris.cube.Cube, date_list:list) -> list[iris.cube.Cube]:
         '''
         Takes single cube of single variable that includes dates in date_list
         Pulls out single days of date
         Returns as list of cubes
-        cube: single cube of a single variable
-        date_list: list of dates in format 'YYYYMMDD'
+
+        Parameters:
+            cube (iris.cube.Cube):
+                single cube of a single variable
+            date_list (list):
+                list of dates in format 'YYYYMMDD'
+        
+        Returns:
+            list[iris.cube.Cube]:
+                A list of cubes
         '''
+
         n = len(date_list)
         x = []
         for each in range(n):
@@ -796,13 +836,20 @@ class Analogues:
         return x
 
     @staticmethod
-    def plot_analogue_months(PAST, PRST):
+    def plot_analogue_months(PAST:list, PRST:list) -> None:
         '''
         Produces histogram of number of analogues in each calendar month
-        Inputs:
-        PAST = list of dates of past period analogues, format ['19580308', ...
-        PRST = list of dates of present period analogues, format ['19580308', ...
+
+        Parameters:
+            PAST (list):
+                List of dates of past period analogues, format ['19580308', ...
+            PRST (list):
+                List of dates of present period analogues, format ['19580308', ...
+        
+        Returns:
+            None
         '''
+
         # List of months (as number)
         PAST_MONTH = []
         for each in PAST:
@@ -821,24 +868,26 @@ class Analogues:
         plt.title('Monthly distribution of top circulation analogues')
 
     @staticmethod
-    def plot_box(axs, bdry):
-        axs.plot([bdry[3], bdry[2]], [bdry[1], bdry[1]],'k')
-        axs.plot([bdry[3], bdry[2]], [bdry[0], bdry[0]],'k')
-        axs.plot([bdry[3], bdry[3]], [bdry[1], bdry[0]],'k')
-        axs.plot([bdry[2], bdry[2]], [bdry[1], bdry[0]],'k')
-        return
-
-    @staticmethod
-    def set_coord_system(cube, chosen_system = iris.analysis.cartography.DEFAULT_SPHERICAL_EARTH_RADIUS):
+    def set_coord_system(cube:iris.cube.Cube,
+                         chosen_system:iris.analysis.cartography=iris.analysis.cartography.DEFAULT_SPHERICAL_EARTH_RADIUS
+                         ) -> iris.cube.Cube:
         '''
         This is used to prevent warnings that no coordinate system defined
         Defaults to DEFAULT_SPHERICAL_EARTH_RADIUS
+
+        Parameters:
+            cube (iris.cube.Cube):
+                Iris cube
+            chosen_system (iris.analysis.cartography):
+                Coordinate system
+        
+        Returns:
+            iris.cube.Cube:
+                Iris cube with applied coordinate system
         '''
         cube.coord('latitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
         cube.coord('longitude').coord_system = iris.coord_systems.GeogCS(chosen_system)
         return cube
-
-
 
     ######################################################################################
     # MARIS added functions
@@ -1043,19 +1092,27 @@ class Analogues:
             iris.coord_categorisation.add_day_of_month(cube, 'time')
         return cube.extract(iris.Constraint(year=yr, month=mon, day_of_month=day))
 
-    # J: missing description on what this function does
     @staticmethod
     def analogue_dates_v3(daily_cube:iris.cube.Cube, event_cube:iris.cube.Cube, N:int) -> list:
         '''
-        To be added
+        Identify analogue dates for a given event field.
+
+        The function computes the Euclidean distance between a single-day event
+        field and all daily fields in the input cube, then returns the dates
+        corresponding to the N closest analogue fields. A minimum temporal
+        separation between returned dates is enforced.
 
         Parameters:
-            daily_cube (iris.cube.Cube): Cube with daily values
-            event_cube (iris.cube.Cube): Cube of just a single day
-            N (int): Number of analogues
+            daily_cube (iris.cube.Cube):
+                Cube containing daily fields from which analogue dates are selected.
+            event_cube (iris.cube.Cube):
+                Cube containing a single-day event field used as the reference.
+            N (int):
+                Number of analogues
         
         Returns:
-            list: To be added
+            List of analogue dates in YYYYMMDD string format, filtered to ensure
+            a minimum separation in time between events.
         '''
 
         def cube_date_to_string(cube_date : tuple) -> tuple:
@@ -1082,16 +1139,27 @@ class Analogues:
     @staticmethod
     def anomaly_period_outputs_v2(daily_cube:iris.cube.Cube, event_cube:iris.cube.Cube, date:list, N:int) -> list:
         '''
-        To be added
+        Identify analogue dates for an event after removing spatial means.
+
+        The function computes anomaly fields by removing the spatial mean from
+        both the daily dataset and the event field, identifies analogue dates
+        using Euclidean distance, and returns a list of analogue dates excluding
+        the event date itself.
 
         Parameters:
-            daily_cube (iris.cube.Cube): Cube with daily values
-            event_cube (iris.cube.Cube): Cube of just a single day
-            date (list): Date of the event [year, month abbrev, day]
-            N (int): Number of analogues
+            daily_cube (iris.cube.Cube):
+                Cube with daily values
+            event_cube (iris.cube.Cube):
+                Cube of just a single day
+            date (list):
+                Date of the event [year, month abbrev, day]
+            N (int):
+                Number of analogues
         
         Returns
-            list: To be added
+            list:
+                List of analogue dates in YYYYMMDD string format, excluding the
+                original event date.
         '''
 
         # cube_daily = cube_daily[:, 0, :, :]  # shape = (time, lat, lon)
@@ -1113,14 +1181,21 @@ class Analogues:
     @staticmethod
     def analogues_composite_anomaly_v2(cube:iris.cube.Cube, dates:list):
         '''
-        To be added
+        Compute a composite anomaly field from analogue dates.
+
+        The function removes the spatial mean from each daily field in the input
+        cube and computes a mean composite anomaly over the specified analogue
+        dates.
 
         Parameters:
-            cube (iris.cube.Cube): Single cube with daily values
-            dates (list): List of dates
+            cube (iris.cube.Cube):
+                Single cube with daily values
+            dates (list):
+                List of dates
 
         Returns:
-            To be added
+            iris.cube.Cube:
+                Composite anomaly field averaged over all analogue dates.
         '''
 
         P1_spatialmean = cube.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)   # Calculate spatial mean for each day
@@ -1132,14 +1207,22 @@ class Analogues:
     @staticmethod
     def analogues_composite_v2(cube:iris.cube.Cube, dates:list) -> Any|float:
         '''
-        To be added
+        Compute a composite field from analogue dates.
+
+        The function extracts daily fields corresponding to the provided dates
+        from the input cube and computes their mean composite. Dates that cannot
+        be extracted are skipped.
 
         Parameters:
-            cube (iris.cube.Cube): Single cube with daily values
-            dates (list): List of dates
+            cube (iris.cube.Cube):
+                Single cube with daily values
+            dates (list):
+                List of dates
 
         Returns:
-            Any|float: To be added
+            iris.cube.Cube|float:
+                Mean composite field averaged over all valid dates. A float may be
+                returned if no valid composite could be constructed.
         '''
 
         P1_comp = Analogues.composite_dates(cube, dates) # composite analogues
@@ -1148,7 +1231,8 @@ class Analogues:
     # J: add return type
     # correlation value
     @staticmethod
-    def var_correlation(var_cube:iris.cube.Cube, correlation_cube:iris.cube.Cube) -> tuple[iris.cube.Cube, np.ndarray, np.ndarray]:
+    def var_correlation(var_cube:iris.cube.Cube, correlation_cube:iris.cube.Cube
+                        ) -> tuple[iris.cube.Cube, np.ndarray, np.ndarray]:
         '''
         Calculates the correlation between var_cube and correlation_cube
 
@@ -1160,11 +1244,13 @@ class Analogues:
 
         Returns:
             z_data (iris.cube.Cube):
-                To be added
+                Anomaly cube of the correlation variable with the spatial mean
+                removed at each time step.
             corr_field (np.ndarray):
-                To be added
+                Spatial field of Pearson correlation coefficients between the
+                event time series and each grid point of the correlation cube.
             p_field (np.ndarray):
-                To be added
+                Spatial field of p-values associated with the Pearson correlations.
                 
         '''
 
@@ -1183,18 +1269,23 @@ class Analogues:
         return z_data, corr_field, p_field
 
     @staticmethod
-    def impact_index_v2(cube:iris.cube.Cube) -> iris.cube.Cube:
+    def impact_index_v2(cube:iris.cube.Cube) -> np.ma.MaskedArray:
         '''
-        Calculates the impact index over the cube
+        Calculate the spatially averaged impact index over a cube.
+
+        The function computes an area-weighted mean over latitude and longitude
+        after masking invalid values, producing a single impact index value
+        for each time step.
 
         Parameters:
             cube (iris.cube.Cube):
-                Spatial extent of index
+                Cube containing the spatial extent over which the impact index is calculated.
 
         Returns:
-            iris.cube.Cube:
-                To be added
+            np.ma.MaskedArray:
+                Area-weighted mean impact index collapsed over latitude and longitude.
         '''
+
         grid_areas = iris.analysis.cartography.area_weights(cube)
         cube.data = ma.masked_invalid(cube.data)
         return cube.collapsed(('longitude','latitude'),iris.analysis.MEAN,weights=grid_areas).data
@@ -1203,9 +1294,29 @@ class Analogues:
     # Plotting
     ######################################################################################
 
+    @staticmethod
+    def plot_box(axs:mathplotlib.axes.Axes, bbox:list[float]) -> None:
+        '''
+        Draws bounding box on plot
+
+        Parameters:
+            axs (mathplotlib.axes.Axes):
+                Plot to draw boundingbox on
+            bbox (list[float]):
+                Bounding box
+
+        Returns:
+            None
+        '''
+
+        axs.plot([bbox[3], bbox[2]], [bbox[1], bbox[1]],'k')
+        axs.plot([bbox[3], bbox[2]], [bbox[0], bbox[0]],'k')
+        axs.plot([bbox[3], bbox[3]], [bbox[1], bbox[0]],'k')
+        axs.plot([bbox[2], bbox[2]], [bbox[1], bbox[0]],'k')
+
     # adds background to plots
     @staticmethod
-    def background(ax:mathplotlib.axes.Axes) -> mathplotlib.axes.Axes:
+    def background(ax:mathplotlib.axes.Axes) -> None:
         '''
         Adds background to given plot (ax)
 
@@ -1214,8 +1325,7 @@ class Analogues:
                 Plot axes to add background to
 
         Returns:
-            ax (mathplotlib.axes.Axes):
-                Plot axes with background added
+            None
         '''
 
         ax.coastlines(linewidth=0.4)
@@ -1475,10 +1585,23 @@ class Analogues:
                              ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
         
         '''
-        Plot 4 figures (event, past, present, change) for 'z500', 'slp', 't2m', and 'tp'
-        'z500': unit type?
-        'slp': unity type?
-        't2m': degrees Celcius
+        Plot event, past analogue composite, present analogue composite,
+        and their difference for multiple variables.
+
+        For each variable in ``var_list`` (typically 'z500', 'slp', 't2m', 'tp'),
+        four panels are produced:
+            1. Event field
+            2. Past analogue composite
+            3. Present analogue composite
+            4. Change (present minus past)
+
+        The analogue variable (``ana_var``) is plotted as spatial anomalies
+        with the spatial mean removed.
+
+        Units:
+        temperature (t2m): Kelvin;
+        precipitation (tp): Meters;
+        z500: m^2 s^-2;
 
         Parameters:
             ana_var (str):
@@ -1633,13 +1756,18 @@ class Analogues:
                                   ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes, list, list]:
         
         '''
-        To be added
+        Plot annual frequency time series of analogue occurrence together with
+        linear trends and 10-year rolling means.
+
+        Three percentile thresholds are shown: upper 5%, 10%, and 20%.
         
         Parameters:
             yr_vals (list):
-                To be added
+                List containing three yearly time series
+                [upper 5%, upper 10%, upper 20%], each spanning years Y1 to Y2.
             roll_vals (list):
-                To be added
+                List containing three 10-year rolling-mean time series corresponding
+                to yr_vals [upper 5%, upper 10%, upper 20%].
             Y1 (int):
                 Start year for analysis range
             Y2 (int):
@@ -1697,17 +1825,6 @@ class Analogues:
 
         return fig, ax, [slope5, slope10, slope20], [pval_5, pval_10, pval_20]
 
-    # J: look at data imports and region extractions
-    # J: Look at what variables are repeated
-    # J: Why are the options set here again?
-
-
-        # ## OPTIONS ##
-        # # How many analogues?
-        # n = 19 # no more than 29
-        # # With circulation?
-        # circ_plot = 0 # 1: plots circulation contours, 0: does not
-
     @staticmethod
     def plot_postage_stamps(ana_var:str, haz_var:str, cube_map:dict[str, iris.cube.Cube], event_date:list,
                             region:list, cmap:ListedColormap, dates_plot:list,
@@ -1716,7 +1833,12 @@ class Analogues:
                             ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
         
         '''
-        To be added
+        Plot postage-stamp maps of an event and its analogue days for a circulation
+        variable and an associated hazard variable.
+
+        The first panel shows the event day, followed by panels showing analogue
+        days. Hazard fields are shown as filled contours, with optional circulation
+        contours overlaid.
 
         Parameters:
             ana_var (str):
@@ -1734,13 +1856,13 @@ class Analogues:
             dates_plot (list):
                 Dates to plot
             circ_past (iris.cube.CubeList):
-                To be added
+                CubeList containing circulation fields for analogue dates
             haz_past (iris.cube.CubeList):
-                To be added
+                CubeList containing hazard fields for analogue dates.
             circ_plot (int):
-                To be added
+                Flag indicating whether circulation contours are overlaid (1 = plot contours, 0 = no contours).
             n (int):
-                Number of dates
+                Number of analogue dates to plot.
             fig_size (tuple[float, float]):
                 Figure size
         
@@ -1884,7 +2006,11 @@ class Analogues:
                                 ) -> tuple[iris.cube.CubeList,iris.cube.CubeList , int]:
 
         '''
-        Get the ana_van and haz_var values for a range of single dates
+        Extract circulation and hazard variable fields for a list of single dates.
+
+        For each date in ``dates``, the function extracts the spatial subset
+        (defined by ``region``) of the circulation variable ``ana_var`` and
+        the hazard variable ``haz_var`` from the provided daily cubes.
 
         Parameters:
             ana_var (str):
@@ -1900,9 +2026,9 @@ class Analogues:
         
         Returns:
             circ_vals (iris.cube.CubeList):
-                To be added
+                CubeList containing the circulation variable values for each date, subset to the specified region.
             haz_vals (iris.cube.CubeList):
-                To be added
+                CubeList containing the hazard variable values for each date, subset to the specified region.
             n (int):
                 Number of dates
         '''
@@ -1930,7 +2056,12 @@ class Analogues:
                                dates_z500:list, dates_slp:list
                                ) -> tuple[iris.cube.Cube, list, list]:
         '''
-        To be added
+        Extract impact index values for a single event and for analogue dates 
+        corresponding to z500 and slp.
+
+        The function calculates the impact index for the event day and for
+        the list of analogue days associated with circulation variables z500
+        and slp, returning them as processed values.
 
         Parameters:
             cube (iris.cube.Cube):
@@ -1944,11 +2075,11 @@ class Analogues:
 
         Returns:
             II_event (iris.cube.Cube):
-                To be added
+                Impact index value of the event day (spatially averaged cube).
             II_z500 (list):
-                To be added
+                List of impact index values for each z500 analogue date.
             II_slp (list):
-                To be added
+                List of impact index values for each slp analogue date.
         '''
 
         II_event = Analogues.impact_index_v2(Analogues.extract_date_v2(cube, event_date))
