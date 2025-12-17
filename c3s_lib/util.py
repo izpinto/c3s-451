@@ -243,8 +243,8 @@ class Util:
 
 
     @staticmethod
-    def add_doy_column(gdf, datetime_col:str, doy_col:str='moy') -> gpd.GeoDataFrame:   
-        """Adds a column to the GeoDataFrame representing the day of the month.
+    def add_doy_column(gdf, datetime_col:str, doy_col:str='doy') -> gpd.GeoDataFrame:   
+        """Adds a column to the GeoDataFrame representing the day of the year.
 
         The function ensures the specified datetime column is in datetime format and extracts
         the day number into a new column.
@@ -252,11 +252,11 @@ class Util:
         Parameters:
             gdf (gpd.GeoDataFrame): The input GeoDataFrame.
             datetime_col (str): The column name containing datetime objects.
-            doy_col (str, optional): The name of the new column to hold the day of the month
-                (labeled as 'moy' in the code, but extracting day number). Defaults to 'moy'.
+            doy_col (str, optional): The name of the new column to hold the day of the year
+                (labeled as 'doy' in the code, but extracting day number). Defaults to 'doy'.
 
         Returns:
-            gpd.GeoDataFrame: A copy of the input GeoDataFrame with the new day-of-month column added.
+            gpd.GeoDataFrame: A copy of the input GeoDataFrame with the new day-of-year column added.
         """
         gdf = gdf.copy()
 
