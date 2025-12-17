@@ -6,28 +6,12 @@ from typing import Any
 from matplotlib.colors import ListedColormap
 import iris
 import iris.coord_categorisation # type: ignore
-# from iris.coord_categorisation import add_season_membership
 import numpy as np
-# import cartopy
 import cartopy.crs as ccrs
-# import glob
-# import matplotlib.cm as mpl_cm
 import os
-# import sys
-# import scipy.stats as sps
-# from scipy.stats import genextreme as gev
-# import random
-# import scipy.io
-# import xarray as xr
-# import netCDF4 as nc
-# import iris.coords # type: ignore
 import iris.util # type: ignore
-# from iris.util import equalise_attributes # type: ignore
-# from iris.util import unify_time_units # type: ignore
-# from scipy.stats.stats import pearsonr
 import scipy.stats as stats
 import calendar
-# import random
 import numpy.ma as ma
 import matplotlib.pyplot as plt
 import iris.analysis
@@ -35,7 +19,7 @@ import cartopy.feature as cfeature
 from datetime import datetime
 import warnings
 from shapely.geometry import Polygon
-import mathplotlib
+import matplotlib
 
 
 class Analogues:
@@ -138,7 +122,7 @@ class Analogues:
         return FIELD/n
 
     @staticmethod
-    def ED_similarity(event:iris.cube.Cube, P_cube:iris.cube.Cube, region:list[float], method:str):
+    def ED_similarity(event:iris.cube.Cube, P_cube:iris.cube.Cube, region:list[float], method:str) -> list:
         
         '''
         Returns similarity values based on euclidean distance
@@ -286,7 +270,7 @@ class Analogues:
                 Months to subset
 
         Returns:
-            cube (iris.cube.Cube):
+            iris.cube.Cube:
                 Iris cube containing the selected variable for months from Y1 to Y2
         '''
         cubes = iris.load(Analogues.find_reanalysis_filename(var), var)
@@ -325,7 +309,7 @@ class Analogues:
                 Spatial region used for analogue selection.
         
         Returns:
-            P1_dates (list):
+            list:
                 List of the N closest analogue dates, given as strings in YYYYMMDD format.
         '''
         P1_msl = Analogues.reanalysis_data(ana_var, Y1, Y2, months) # Get ERA5 data, Y1 to Y2, for var and season chosen. Global.
@@ -343,7 +327,7 @@ class Analogues:
         return P1_dates
 
     @staticmethod
-    def cube_date(cube:iris.cube.Cube):
+    def cube_date(cube:iris.cube.Cube) -> tuple[int, str, int, Any]:
         '''
         Returns date of cube (assumes cube single day)
 
@@ -358,7 +342,7 @@ class Analogues:
                 Month
             day (int):
                 Day
-            time (any):
+            time (Any):
                 Time
         '''
         if len(cube.coords('year')) > 0:
@@ -384,7 +368,7 @@ class Analogues:
         return year, month, day, time
 
     @staticmethod
-    def date_list_checks(date_list:list, days_apart:int=5):
+    def date_list_checks(date_list:list, days_apart:int=5) -> list:
         '''
         Takes date_list and removes:
         1) the original event (if present)
@@ -401,7 +385,6 @@ class Analogues:
                 Filtered list of dates in YYYYMMDD format, with dates closer than days_apart days removed.
         '''
 
-        import datetime
         dates = []
         for each in date_list:
             dates.append(datetime.date(int(each[:4]), int(each[4:6]), int(each[6:])))
@@ -513,7 +496,7 @@ class Analogues:
         return date_list2
 
     @staticmethod
-    def pull_out_day_era(psi:iris.cube.Cube, sel_year:int, sel_month:str|int, sel_day:int) -> iris.cube.Cube:
+    def pull_out_day_era(psi:iris.cube.Cube, sel_year:int, sel_month:str|int, sel_day:int) -> iris.cube.Cube|None:
 
         """
         Extract a single daily field for a given date from ERA reanalysis data.
@@ -533,11 +516,10 @@ class Analogues:
                 Day of the month.
 
         Returns:
-            psi_day (iris.cube.Cube):
+            iris.cube.Cube | None:
                 Cube containing data for the selected date.
-
-            None:
-                Returned if the requested date is not present in the data.
+                Or None if the requested date is not present in the data.
+                
         """
 
         if type(psi)==iris.cube.Cube:
@@ -1180,7 +1162,7 @@ class Analogues:
 
     # J: add return type
     @staticmethod
-    def analogues_composite_anomaly_v2(cube:iris.cube.Cube, dates:list):
+    def analogues_composite_anomaly_v2(cube:iris.cube.Cube, dates:list) -> iris.cube.Cube:
         '''
         Compute a composite anomaly field from analogue dates.
 
@@ -1206,7 +1188,7 @@ class Analogues:
 
     # J: add return type
     @staticmethod
-    def analogues_composite_v2(cube:iris.cube.Cube, dates:list) -> Any|float:
+    def analogues_composite_v2(cube:iris.cube.Cube, dates:list) -> iris.cube.Cube|float:
         '''
         Compute a composite field from analogue dates.
 
@@ -1296,12 +1278,12 @@ class Analogues:
     ######################################################################################
 
     @staticmethod
-    def plot_box(axs:mathplotlib.axes.Axes, bbox:list[float]) -> None:
+    def plot_box(axs:matplotlib.axes.Axes, bbox:list[float]) -> None:
         '''
         Draws bounding box on plot
 
         Parameters:
-            axs (mathplotlib.axes.Axes):
+            axs (matplotlib.axes.Axes):
                 Plot to draw boundingbox on
             bbox (list[float]):
                 Bounding box
@@ -1317,12 +1299,12 @@ class Analogues:
 
     # adds background to plots
     @staticmethod
-    def background(ax:mathplotlib.axes.Axes) -> None:
+    def background(ax:matplotlib.axes.Axes) -> None:
         '''
         Adds background to given plot (ax)
 
         Parameters:
-            ax (mathplotlib.axes.Axes):
+            ax (matplotlib.axes.Axes):
                 Plot axes to add background to
 
         Returns:
@@ -1342,7 +1324,7 @@ class Analogues:
                              slp_correlation:np.ndarray,region:list[float],
                              z500_domain: list[float], slp_domain:list[float],
                              draw_labels:bool=True, fig_size:tuple[float, float]=(10,10)
-                            ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+                            ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
 
         '''
         Plots the correlation figures for z500 and slp
@@ -1368,7 +1350,7 @@ class Analogues:
         Returns:
             fig (matplotlib.figure.Figure):
                 Correlation map figure
-            ax (mathplotlib.axes.Axes):
+            ax (matplotlib.axes.Axes):
                 Correlation map plot
 
         '''
@@ -1406,7 +1388,7 @@ class Analogues:
     @staticmethod
     def violin_plot(Haz:str, II_event:iris.cube.Cube, II_z500:list, II_slp:list,
                     fig_size:tuple[float, float]=(2.5, 2.5)
-                    ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+                    ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
 
         '''
         Violin plot to visually check the result
@@ -1424,9 +1406,9 @@ class Analogues:
                 Figure size
         
         Returns:
-            fig (mathplotlib.figure.Figure):
+            fig (matplotlib.figure.Figure):
                 Figure of the violin plot
-            axs (mathplotlib.axes.Axes):
+            axs (matplotlib.axes.Axes):
                 Violin plot
         
         '''
@@ -1455,7 +1437,7 @@ class Analogues:
     @staticmethod
     def plot_analogue_proportions(II_event:iris.cube.Cube, II_z500:list, II_slp:list, N:int,
                                   fig_size:tuple[float,float]=(2.5, 2.5), xlim:int=10
-                                  ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+                                  ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
         Show the larger range of analogue proportions as a line graph
@@ -1475,9 +1457,9 @@ class Analogues:
                 Left horizontal plot limit
 
         Returns:
-            fig (mathplotlib.figure.Figure):
+            fig (matplotlib.figure.Figure):
                 Figure of the line graph
-            axs (mathplotlib.axes.Axes):
+            axs (matplotlib.axes.Axes):
                 Line graph plot
         
         '''
@@ -1506,7 +1488,7 @@ class Analogues:
     @staticmethod
     def plot_analogue_variable(ana_var:str, event_cube:iris.cube.Cube, selected_daily_cube:iris.cube.Cube,
                                dates_past:list, dates_prst:list, event_date:list
-                               ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+                               ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
         Plots the analogue variable for the event date, past, and present
@@ -1526,9 +1508,9 @@ class Analogues:
                 Date of the event
         
         Returns:
-            fig (mathplotlib.figure.Figure):
+            fig (matplotlib.figure.Figure):
                 Figure
-            ax (mathplotlib.axes.Axes):
+            ax (matplotlib.axes.Axes):
                 plot
         '''
 
@@ -1583,7 +1565,7 @@ class Analogues:
                              R2:list[float], region:list[float], sig_field:list,
                              event_date:list, dates_past:list, dates_prst:list,
                              fig_size:tuple[float, float]=(12,12), dpi:int=200
-                             ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+                             ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
         Plot event, past analogue composite, present analogue composite,
@@ -1629,9 +1611,9 @@ class Analogues:
                 Dots per inch
         
         Returns:
-            fig (mathplotlib.figure.Figure):
+            fig (matplotlib.figure.Figure):
                 Figure of the plots
-            ax (mathplotlib.axes.Axes):
+            ax (matplotlib.axes.Axes):
                 Plot object
 
         '''
@@ -1754,7 +1736,7 @@ class Analogues:
     @staticmethod
     def plot_frequency_timeseries(yr_vals:list, roll_vals:list, Y1:int, Y2:int,
                                   fig_size:tuple[float,float]=(8,4)
-                                  ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes, list, list]:
+                                  ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, list, list]:
         
         '''
         Plot annual frequency time series of analogue occurrence together with
@@ -1777,9 +1759,9 @@ class Analogues:
                 Figure size
         
         Returns:
-            fig (mathplotlib.figure.Figure):
+            fig (matplotlib.figure.Figure):
                 Figure
-            ax (mathplotlib.axes.Axes):
+            ax (matplotlib.axes.Axes):
                 Plot
             list:
                 List of slope values for upper 5%, 10% and 20%
@@ -1831,7 +1813,7 @@ class Analogues:
                             region:list, cmap:ListedColormap, dates_plot:list,
                             circ_past:iris.cube.CubeList, haz_past:iris.cube.CubeList,
                             circ_plot:int, n:int, fig_size:tuple[float, float]=(12,12)
-                            ) -> tuple[mathplotlib.figure.Figure, mathplotlib.axes.Axes]:
+                            ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
         Plot postage-stamp maps of an event and its analogue days for a circulation
@@ -1868,9 +1850,9 @@ class Analogues:
                 Figure size
         
         Returns:
-            fig (mathplotlib.figure.Figure):
+            fig (matplotlib.figure.Figure):
                 Figure
-            ax (mathplotlib.axes.Axes):
+            ax (matplotlib.axes.Axes):
                 Plot            
         
         '''
@@ -2102,32 +2084,32 @@ class Analogues:
     ######################################################################################
 
     # J: this function is never used but was in one of the analogues
-    # J: to be removed
-    @staticmethod
-    def plot_specified_date(axs, fig, ax, date, title, ana_var, haz_var, R1): 
-        circ = Analogues.extract_region(Analogues.reanalysis_data_single_date(ana_var, date), R1)
-        #E = E - E.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
-        haz = Analogues.extract_region(Analogues.reanalysis_data_single_date(haz_var, date), R1)
-        lats=haz.coord('latitude').points
-        lons=haz.coord('longitude').points
-        if haz_var == 'tp':
-            c = ax.contourf(lons, lats, haz.data, levels=np.linspace(1, 80, 9), cmap = plt.cm.get_cmap('Blues'), transform=ccrs.PlateCarree(), extend='max')
-            fig.subplots_adjust(right=0.8)
-            cbar_ax = fig.add_axes([0.85, 0.3, 0.02, 0.4])
-            fig.colorbar(c, cax=cbar_ax, ticks=np.arange(0, 100, 10))
-            cbar_ax.set_ylabel('Total Precipitation (mm)', labelpad=10, rotation=270, fontsize=12)
-            cbar_ax.set_yticklabels(['0', '', '20','','40','','60','','80',''])
-        elif haz_var == 't2m':
-            c = ax.contourf(lons, lats, haz.data-273.15, levels=np.linspace(np.min(haz.data-273.15), np.max(haz.data-273.15), 9), cmap = plt.cm.get_cmap('RdBu_r'), transform=ccrs.PlateCarree(), extend='max')
-            fig.subplots_adjust(right=0.8)
-            cbar_ax = fig.add_axes([0.85, 0.3, 0.02, 0.4])
-            fig.colorbar(c, cax=cbar_ax, ticks=np.arange(np.min(haz.data-273.15), np.max(haz.data-273.15), 5))
-            cbar_ax.set_ylabel('t2m', labelpad=10, rotation=270, fontsize=12)
-            #cbar_ax.set_yticklabels(['0', '', '20','','40','','60','','80',''])
-        lats=circ.coord('latitude').points
-        lons=circ.coord('longitude').points
-        c2 = axs.contour(lons, lats, circ.data/100, colors='k', transform=ccrs.PlateCarree(), extend='both')
-        axs.clabel(c2, inline=1, fontsize=12)
-        axs.add_feature(cfeature.BORDERS)
-        axs.add_feature(cfeature.COASTLINE)
-        axs.set_title(title, loc='left')
+    # J: to be removed?
+    # @staticmethod
+    # def plot_specified_date(axs, fig, ax, date, title, ana_var, haz_var, R1): 
+    #     circ = Analogues.extract_region(Analogues.reanalysis_data_single_date(ana_var, date), R1)
+    #     #E = E - E.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
+    #     haz = Analogues.extract_region(Analogues.reanalysis_data_single_date(haz_var, date), R1)
+    #     lats=haz.coord('latitude').points
+    #     lons=haz.coord('longitude').points
+    #     if haz_var == 'tp':
+    #         c = ax.contourf(lons, lats, haz.data, levels=np.linspace(1, 80, 9), cmap = plt.cm.get_cmap('Blues'), transform=ccrs.PlateCarree(), extend='max')
+    #         fig.subplots_adjust(right=0.8)
+    #         cbar_ax = fig.add_axes([0.85, 0.3, 0.02, 0.4])
+    #         fig.colorbar(c, cax=cbar_ax, ticks=np.arange(0, 100, 10))
+    #         cbar_ax.set_ylabel('Total Precipitation (mm)', labelpad=10, rotation=270, fontsize=12)
+    #         cbar_ax.set_yticklabels(['0', '', '20','','40','','60','','80',''])
+    #     elif haz_var == 't2m':
+    #         c = ax.contourf(lons, lats, haz.data-273.15, levels=np.linspace(np.min(haz.data-273.15), np.max(haz.data-273.15), 9), cmap = plt.cm.get_cmap('RdBu_r'), transform=ccrs.PlateCarree(), extend='max')
+    #         fig.subplots_adjust(right=0.8)
+    #         cbar_ax = fig.add_axes([0.85, 0.3, 0.02, 0.4])
+    #         fig.colorbar(c, cax=cbar_ax, ticks=np.arange(np.min(haz.data-273.15), np.max(haz.data-273.15), 5))
+    #         cbar_ax.set_ylabel('t2m', labelpad=10, rotation=270, fontsize=12)
+    #         #cbar_ax.set_yticklabels(['0', '', '20','','40','','60','','80',''])
+    #     lats=circ.coord('latitude').points
+    #     lons=circ.coord('longitude').points
+    #     c2 = axs.contour(lons, lats, circ.data/100, colors='k', transform=ccrs.PlateCarree(), extend='both')
+    #     axs.clabel(c2, inline=1, fontsize=12)
+    #     axs.add_feature(cfeature.BORDERS)
+    #     axs.add_feature(cfeature.COASTLINE)
+    #     axs.set_title(title, loc='left')
