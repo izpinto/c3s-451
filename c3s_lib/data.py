@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from cdsapi import Client
 import tempfile
 import numpy as np
-
+import iris
 
 try:
     # Available in Python 3.12+ as per PEP 702
@@ -758,7 +758,7 @@ class DataClient():
         # Fetch the data from the beacon client if has been defined. Then check the min and max date and compare. Whatever is missing should be requested via the cds api
         if self.beacon_cache:
             print("Fetching gmst data from beacon cache...")
-            gdf = self.beacon_cache._fetch_from_era5_monthly_zarr(bbox=bbox, time_range=time_range, variable='t2m')
+            gdf = self.beacon_cache._fetch_from_era5_monthly_zarr_gpd(bbox=bbox, time_range=time_range, variable='t2m')
             if not gdf.empty:
                 gdf = gdf.sort_values(['valid_time', 'longitude', 'latitude']).reset_index(drop=True)
                 # Get the min and max valid time from the DF and validate it covers the requested time range or else fill with era5 cds request
@@ -1245,7 +1245,7 @@ class BeaconDataClient():
 
     
         
-    def _fetch_from_era5_monthly_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
+    def _fetch_from_era5_monthly_zarr_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
         """
         Fetch data from ERA5 Monthly Zarr dataset in Beacon Cache.
         Parameters
@@ -1272,6 +1272,59 @@ class BeaconDataClient():
             return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time'], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
 
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
+
+    def _fetch_from_era5_daily_zarr_xr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> xr.Dataset:
+        """
+        Fetch data from ERA5 Monthly Zarr dataset in Beacon Cache.
+        Parameters
+        ----------
+        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
+        time_range : tuple (start_datetime, end_datetime)
+        variable : str, variable name to fetch. Available: ['t2m', 'total_precipitation']
+        Returns
+        -------
+        GeoDataFrame with data
+        """
+
+        era5_table = self.beacon_client.list_tables()['daily']
+        query = (era5_table.query()
+                 .add_select_column('longitude')
+                 .add_select_column('latitude')
+                 .add_select_column('valid_time')
+                 .add_select_column(variable)
+                 .add_bbox_filter('longitude','latitude', bbox)
+                 .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
+
+        ds = query.to_xarray_dataset(dimension_columns=['longitude','latitude','valid_time'], force=True)
+        return ds    
+
+    def _fetch_from_era5_daily_zarr_iris(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str):
+        """
+        Fetch data from ERA5 Monthly Zarr dataset in Beacon Cache.
+        Parameters
+        ----------
+        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
+        time_range : tuple (start_datetime, end_datetime)
+        variable : str, variable name to fetch. Available: ['t2m', 'total_precipitation']
+        Returns
+        -------
+        GeoDataFrame with data
+        """
+
+        era5_table = self.beacon_client.list_tables()['daily']
+        query = (era5_table.query()
+                 .add_select_column('longitude')
+                 .add_select_column('latitude')
+                 .add_select_column('valid_time')
+                 .add_select_column(variable)
+                 .add_bbox_filter('longitude','latitude', bbox)
+                 .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
+        import tempfile
+        temp_file = tempfile.NamedTemporaryFile()
+        query.to_nd_netcdf('some_path.nc', ['longitude','latitude','valid_time'], force=True)
+
+        iris_cube = iris.iris.load_cube('some_path.nc')
+        return iris_cube
 
     def _fetch_from_era5_daily_zarr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, months:list[str]|list[int]|None=None, table:str='daily') -> gpd.GeoDataFrame:
         """

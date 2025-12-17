@@ -93,3 +93,5 @@ ecmwf.ipynb
 *.nc:Zone.Identifier
 
 *.pyc
+
+TestingJasper.ipynb
