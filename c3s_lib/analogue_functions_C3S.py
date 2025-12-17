@@ -105,28 +105,28 @@ class Analogues:
         return event_list
 
     @staticmethod
-    def composite_dates_anomaly(P1_field:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
+    def composite_dates_anomaly(cube:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
         '''
         Returns single composite of all dates
         
         Parameters:
-            P1_field (iris.cube.Cube):
+            cube (iris.cube.Cube):
                 list of cubes, 1 per year - as used to calc D/date_list
             date_list (list):
                 list of events to composite
         
         Returns:
             iris.cube.Cube:
-                To be added
+                Mean composite anomaly field averaged over all valid dates in date_list.
         '''
-        P1_field = P1_field - P1_field.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
+        cube = cube - cube.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
         n = len(date_list)
         FIELD = 0
         for each in range(n):
             year = int(date_list[each][:4])
             month = calendar.month_abbr[int(date_list[each][4:-2])]
             day = int(date_list[each][-2:])
-            NEXT_FIELD = Analogues.pull_out_day_era(P1_field, year, month, day)
+            NEXT_FIELD = Analogues.pull_out_day_era(cube, year, month, day)
             if NEXT_FIELD == None:
                 print('Field failure for: ',+each)
                 n = n-1
@@ -145,9 +145,9 @@ class Analogues:
 
         Parameters:
             event (iris.cube.Cube):
-                To be added
+                Cube containing the event field to be compared.
             p_cube (iris.cube.Cube):
-                To be added
+                Cube containing candidate fields to compare against the event.
             region (list[float]):
                 Region for data selecion
             method (str):
@@ -155,7 +155,7 @@ class Analogues:
 
         Returns:
             list:
-                To be added
+                List of similarity values for each spatial slice in P_cube, normalised to the range [0, 1].
         '''
 
         E = Analogues.extract_region(event, region)
@@ -306,7 +306,7 @@ class Analogues:
                                date:list, months:list[str], region:list[float]
                                ) -> list:
         '''
-        Function to identify the N closest analogues of for event
+        Identify the N closest analogues of for event
 
         Parameters:
             Y1 (int):
@@ -314,19 +314,19 @@ class Analogues:
             Y2 (int):
                 End year
             ana_var (str):
-                Variable
+                Analogue variable used to identify similar days.
             N (int):
                 Number of analogues
             date (list):
                 date format: [YYYY, 'Mon', DD], e.g. [2021, 'Jul', 14])
             months (list[str]):
-                Months
+                List of month abbreviations used to restrict the seasonal window.
             region (list[float]):
-                Region
+                Spatial region used for analogue selection.
         
         Returns:
             P1_dates (list):
-                To be added
+                List of the N closest analogue dates, given as strings in YYYYMMDD format.
         '''
         P1_msl = Analogues.reanalysis_data(ana_var, Y1, Y2, months) # Get ERA5 data, Y1 to Y2, for var and season chosen. Global.
         P1_field = Analogues.extract_region(P1_msl, region) # Extract the analogues domain (R1) from global field
@@ -394,11 +394,11 @@ class Analogues:
             date_list (list):
                 List of dates
             days_apart (int):
-                To be added
+                Minimum number of days required between any two retained dates.
         
         Returns:
             list:
-                New list of dates
+                Filtered list of dates in YYYYMMDD format, with dates closer than days_apart days removed.
         '''
 
         import datetime
@@ -420,21 +420,22 @@ class Analogues:
     def eucdist_of_datelist(event:iris.cube.Cube, reanalysis_cubelist:iris.cube.Cube|iris.cube.CubeList,
                             date_list:list, region:list[float]) -> list:
         '''
-        To be added
+        Calculate Euclidean distances between an event field and a list of dates.
 
         Parameters:
             event (iris.cube.Cube):
-                To be added
+                Cube containing the event field to be compared.
             reanalysis_cubelist (iris.cube.Cube|iris.cube.CubeList):
-                To be added
+                Daily reanalysis data from which fields corresponding to date_list are extracted.
             date_list (list):
-                To be added
+                List of dates to compare against the event, given as strings in YYYYMMDD format.
             region (list[float]):
-                To be added
+                Spatial region used to subset all fields prior to comparison.
 
         Returns:
             list:
-                To be added
+                List of Euclidean distance values, one for each date in date_list,
+                representing dissimilarity from the event field.
         '''
 
         ED_list = []
