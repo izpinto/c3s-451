@@ -44,7 +44,7 @@ dependencies = [
   "beacon-api >= 1.1.3",
   "cartopy",
   "networkx",
-  "scitools-iris",
+  "scitools-iris; sys_platform == 'linux' or sys_platform == 'darwin'",
 ]
 
 [tool.setuptools]
