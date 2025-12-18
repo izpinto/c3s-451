@@ -602,3 +602,53 @@ class Process:
                             adjusted_polygons.extend(list(clipped_poly.geoms))
 
         return adjusted_polygons
+
+    staticmethod
+    def calculate_yearly_statistics(
+        time_series: dict[str, xr.DataArray],
+        yearly_value: str,              # options: "max", "mean", "min"
+        padding: int,                   # n-day rolling window
+        method: str = None              # "mean" or "sum"
+    ) -> dict[str, xr.DataArray]:
+        """
+        Iterates over a dictionary of DataArrays, applies a rolling window and 
+        resamples to yearly values (max, mean, or min) in a single step.
+        """
+        da_yearly_series = {}
+
+        for name, da in time_series.items():
+            # Determine method automatically for this specific DataArray if not provided
+            current_method = method
+            if current_method is None:
+                # Check variable name safely
+                var_name = da.name.lower() if da.name else ""
+                if any(k in var_name for k in ["tp", "precip", "pr"]):
+                    current_method = "sum"
+                else:
+                    current_method = "mean"
+
+            # Rolling window on the daily series
+            if padding is not None and padding > 1:
+                if current_method == "mean":
+                    da_rolled = da.rolling(time=padding, center=True).mean()
+                elif current_method == "sum":
+                    da_rolled = da.rolling(time=padding, center=True).sum()
+                else:
+                    raise ValueError(f"Method must be 'mean' or 'sum', got '{current_method}'")
+            else:
+                da_rolled = da
+
+            # Compute yearly statistic on the rolled series
+            if yearly_value == "max":
+                da_year = da_rolled.resample(time="YE").max()
+            elif yearly_value == "mean":
+                da_year = da_rolled.resample(time="YE").mean()
+            elif yearly_value == "min":
+                da_year = da_rolled.resample(time="YE").min()
+            else:
+                raise ValueError(f"yearly_value must be: max, mean, min. Got '{yearly_value}'")
+
+            # 4. Store result
+            da_yearly_series[name] = da_year
+
+        return da_yearly_series

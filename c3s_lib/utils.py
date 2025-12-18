@@ -590,3 +590,27 @@ class Utils:
             tuple[float, float, float, float]: The bounding box in the order (min_lon, min_lat, max_lon, max_lat).
         """
         return (west, south, east, north)
+    
+    @staticmethod
+    def convert_bbox(south: float, west: float, north: float, east: float) -> tuple:
+        """
+        Convert user-friendly bounding box order (S, W, N, E)
+        to standard geospatial format (min_lon, min_lat, max_lon, max_lat).
+
+        Parameters
+        ----------
+        south : float
+            Southern boundary (min latitude)
+        west : float
+            Western boundary (min longitude)
+        north : float
+            Northern boundary (max latitude)
+        east : float
+            Eastern boundary (max longitude)
+
+        Returns
+        -------
+        tuple
+            (min_lon, min_lat, max_lon, max_lat)
+        """
+        return (west, south, east, north)
