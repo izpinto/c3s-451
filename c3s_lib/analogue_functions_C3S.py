@@ -4,22 +4,28 @@
 from typing import Any
 
 from matplotlib.colors import ListedColormap
-import iris
-import iris.coord_categorisation # type: ignore
 import numpy as np
 import cartopy.crs as ccrs
 import os
-import iris.util # type: ignore
 import scipy.stats as stats
 import calendar
 import numpy.ma as ma
 import matplotlib.pyplot as plt
-import iris.analysis
 import cartopy.feature as cfeature
 from datetime import datetime
 import warnings
 from shapely.geometry import Polygon
 import matplotlib
+
+# iris doesnt work on windows
+try:
+    import iris
+    import iris.analysis
+    import iris.coord_categorisation # type: ignore
+    import iris.util # type: ignore
+except ImportError:
+    print("cant import iris, are you on windows?")
+
 
 
 class Analogues:

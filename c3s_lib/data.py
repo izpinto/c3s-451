@@ -12,7 +12,7 @@ import numpy as np
 try:
     import iris
 except ImportError:
-    print("cant import iris")
+    print("cant import iris, are you on windows?")
 
 try:
     # Available in Python 3.12+ as per PEP 702
