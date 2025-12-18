@@ -5,7 +5,9 @@ import pandas as pd
 import xarray as xr
 import tempfile
 
-if __import__('sys').platform in ['linux', 'darwin']:
+from c3s_lib.data.variables import Variable
+
+if __import__('sys').platform in ['linux']:
     import iris # type: ignore
 
 class CDSClient():
@@ -172,11 +174,10 @@ class CDSClient():
     def _fetch_data_pressure_levels(
         self,
         dataset: str,
-        variables: list[str],
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
-        daily_statistic: str = "daily_mean"
     ) -> list[str]:
         """
         Fetch data from CDS API for given variables and bbox, splitting by year.
@@ -187,7 +188,7 @@ class CDSClient():
         ranges = self._split_time_range_by_year(*time_range)
         files = []
         for start_dt, end_dt in ranges:
-            req = self._build_request_pressure_levels(variables, bbox, (start_dt, end_dt), levels, daily_statistic=daily_statistic)
+            req = self._build_request_pressure_levels([variable.cds_name()], bbox, (start_dt, end_dt), levels, daily_statistic=variable.cds_daily_statistic())
             with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
                 self.cds_client.retrieve(
                     dataset,
@@ -200,19 +201,17 @@ class CDSClient():
     def fetch_data_pressure_levels_gpd(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
-        daily_statistic: str = "daily_mean"
     ) -> gpd.GeoDataFrame:
         files = self._fetch_data_pressure_levels(
             dataset,
-            [variable],
+            variable,
             bbox,
             time_range,
             levels,
-            daily_statistic=daily_statistic
         )
         
         gdfs = []
@@ -237,19 +236,17 @@ class CDSClient():
     def fetch_data_pressure_levels_xr(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
-        daily_statistic: str = "daily_mean"
     ) -> xr.Dataset:
         files = self._fetch_data_pressure_levels(
             dataset,
-            [variable],
+            variable,
             bbox,
             time_range,
             levels,
-            daily_statistic=daily_statistic
         )
         
         dss = []
@@ -273,22 +270,20 @@ class CDSClient():
     def fetch_data_pressure_levels_iris(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
-        daily_statistic: str = "daily_mean"
     ) -> xr.Dataset:
-        if __import__('sys').platform not in ['linux', 'darwin']:
-            raise RuntimeError("Iris cubes is only supported on Linux and macOS platforms.")
+        if __import__('sys').platform not in ['linux']:
+            raise RuntimeError("Iris cubes is only supported on Linux platforms.")
         
         files = self._fetch_data_pressure_levels(
             dataset,
-            [variable],
+            variable,
             bbox,
             time_range,
             levels,
-            daily_statistic=daily_statistic
         )
         
         dss = []
@@ -316,10 +311,9 @@ class CDSClient():
     def _fetch_data_single_levels(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
-        daily_statistic: str = "daily_mean",
         months: list[int]|None = None
     ) -> list[str]:
         """
@@ -332,7 +326,7 @@ class CDSClient():
 
         files = []
         for start_dt, end_dt in ranges:
-            req = self._build_request_single_levels([variable], bbox, (start_dt, end_dt), daily_statistic=daily_statistic)
+            req = self._build_request_single_levels([variable.cds_name()], bbox, (start_dt, end_dt), daily_statistic=variable.cds_daily_statistic())
             with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
                 self.cds_client.retrieve(
                     dataset,
@@ -346,21 +340,17 @@ class CDSClient():
     def fetch_data_single_levels_gpd(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
-        daily_statistic: str = "daily_mean",
-        months: list[int]|None = None
     ) -> gpd.GeoDataFrame:
         files = self._fetch_data_single_levels(
             dataset,
             variable,
             bbox,
             time_range,
-            daily_statistic=daily_statistic,
-            months=months
         )
-        
+        min_start, max_end = time_range
         gdfs = []
         for file in files:
             # open dataset
@@ -382,19 +372,15 @@ class CDSClient():
     def fetch_data_single_levels_xr(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
-        daily_statistic: str = "daily_mean",
-        months: list[int]|None = None
     ) -> xr.Dataset:
         files = self._fetch_data_single_levels(
             dataset,
             variable,
             bbox,
             time_range,
-            daily_statistic=daily_statistic,
-            months=months
         )
         
         dss = []
@@ -418,22 +404,18 @@ class CDSClient():
     def fetch_data_single_levels_iris(
         self,
         dataset: str,
-        variable: str,
+        variable: Variable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
-        daily_statistic: str = "daily_mean",
-        months: list[int]|None = None
     ) -> xr.Dataset:
-        if __import__('sys').platform not in ['linux', 'darwin']:
-            raise RuntimeError("Iris cubes is only supported on Linux and macOS platforms.")
+        if __import__('sys').platform not in ['linux']:
+            raise RuntimeError("Iris cubes is only supported on Linux platforms.")
         
         files = self._fetch_data_single_levels(
             dataset,
             variable,
             bbox,
             time_range,
-            daily_statistic=daily_statistic,
-            months=months
         )
         
         dss = []

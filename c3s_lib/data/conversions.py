@@ -49,7 +49,7 @@ class Conversions:
             pandas_np_array : np.ndarray = array.values # type: ignore
             return pd.Series(Conversions._inner_convert_temperature(pandas_np_array, from_unit, to_unit))
         else:
-            raise TypeError("Unsupported type for temperature conversion")
+            raise TypeError("Unsupported type for temperature conversion: " + str(type(array)))
         
     @staticmethod
     def _inner_convert_temperature(array: np.ndarray, from_unit: str, to_unit: str) -> np.ndarray:
@@ -117,3 +117,21 @@ class Conversions:
                     (0.0, min_lat, hi,    max_lat),
                 ]
             return out
+        
+    @staticmethod
+    def variable_name_translation(variable_name: str) -> str:
+        """
+        Translate variable names between different conventions.
+
+        Parameters:
+            variable_name (str):
+                The variable name to translate.
+
+        Returns:
+            str: The translated variable name.
+        """
+        translation_dict = {
+            '2m_temperature': 't2m',
+            'total_precipitation': 'tp',
+        }
+        return translation_dict.get(variable_name, variable_name)

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import tempfile
 
 # Import iris only on supported platforms
-if __import__('sys').platform in ['linux', 'darwin']:
+if __import__('sys').platform in ['linux']:
     import iris # type: ignore
 
 class BeaconDataClient():
@@ -129,8 +129,8 @@ class BeaconDataClient():
         """
         
         # Check platform
-        if __import__('sys').platform not in ['linux', 'darwin']:
-            raise RuntimeError("Iris cubes is only supported on Linux and macOS platforms.")
+        if __import__('sys').platform not in ['linux']:
+            raise RuntimeError("Iris cubes is only supported on Linux platforms.")
 
         query = self.fetch_from_era5_daily_query(bbox, time_range, variable)
         
