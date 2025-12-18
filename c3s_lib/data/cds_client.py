@@ -89,23 +89,39 @@ class CDSClient():
         }
         return request
     
-    def _fetch_data_monthly_averaged(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
+    def _fetch_data_monthly_netcdf(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> str:
         dataset = "reanalysis-era5-single-levels-monthly-means"
         
         req = self._build_request_monthly_averaged(variable, time_range, bbox)
-        with tempfile.NamedTemporaryFile(suffix='.nc') as tmp:
+        with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
             self.cds_client.retrieve(
                 dataset,
                 req
             ).download(target=tmp.name)
             # open dataset
-            ds = xr.open_dataset(tmp.name)
-            # convert entire dataset to DataFrame
-            df = ds.to_dataframe().reset_index()
-            # create geometry
-            df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
-            gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
-            return gdf
+            return tmp.name
+        
+    def _fetch_data_monthly_averaged_xr(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> xr.Dataset:
+        file = self._fetch_data_monthly_netcdf(variable, bbox, time_range)
+        ds = xr.open_dataset(file)
+        # filter time to exact range
+        ds = ds.sel(valid_time=slice(time_range[0], time_range[1]))
+        return ds
+    
+    def _fetch_data_monthly_averaged_gpd(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
+        file = self._fetch_data_monthly_netcdf(variable, bbox, time_range)
+        # open dataset
+        ds = xr.open_dataset(file)
+        # convert entire dataset to DataFrame
+        df = ds.to_dataframe().reset_index()
+        # create geometry
+        df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+        gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+        
+        # filter time to exact range
+        gdf = gdf[(gdf['valid_time'] >= time_range[0]) & (gdf['valid_time'] <= time_range[1])]
+
+        return gdf
     
     def _build_request_pressure_levels(self, variables: list[str], bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], levels: list[int], daily_statistic: str = "daily_mean") -> dict:
         start_dt, end_dt = time_range
@@ -258,8 +274,7 @@ class CDSClient():
         
         ds = xr.open_mfdataset(
             files,
-            combine="by_coords",
-            concat_dim="time"
+            combine="by_coords"
         )
         
         # filter time to exact range
@@ -295,8 +310,7 @@ class CDSClient():
         
         ds = xr.open_mfdataset(
             files,
-            combine="by_coords",
-            concat_dim="time"
+            combine="by_coords"
         )
         
         # filter time to exact range
@@ -392,8 +406,7 @@ class CDSClient():
         
         ds = xr.open_mfdataset(
             files,
-            combine="by_coords",
-            concat_dim="time"
+            combine="by_coords"
         )
         
         # filter on given time range instead of taking the entire month
@@ -427,8 +440,7 @@ class CDSClient():
         
         ds = xr.open_mfdataset(
             files,
-            combine="by_coords",
-            concat_dim="time"
+            combine="by_coords"
         )
         
         # filter on given time range instead of taking the entire month

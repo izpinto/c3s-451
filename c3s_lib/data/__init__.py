@@ -4,6 +4,13 @@ from .cordex_client import *
 from .conversions import *
 from .variables import *
 
+try:
+    # Available in Python 3.12+ as per PEP 702
+    from warnings import deprecated
+except ImportError:
+    # Backport available in typing_extensions for older versions
+    from typing_extensions import deprecated
+
 if __import__('sys').platform in ['linux']:
     from .mars_client import *
     import iris # type: ignore
@@ -68,24 +75,6 @@ class DataClient():
 
         return xr.concat(dss, dim='time') # type: ignore
     
-    # def get_beacon_cache_daily_iris(
-    #     self,
-    #     bbox: tuple[float,float,float,float],
-    #     time_ranges: list[tuple[datetime,datetime]],
-    #     variable: str) -> iris.cube.Cube | None:
-    #     if self.beacon_cache is None:
-    #         print("Beacon Cache client not initialized")
-    #         return None
-        
-    #     cubes = []
-    #     adjusted_bboxes = Conversions.convert_bbox_to_0_360(bbox)
-    #     for range in time_ranges:
-    #         for adj_bbox in adjusted_bboxes:
-    #             cube = self.beacon_cache.fetch_from_era5_daily_zarr_iris(adj_bbox, range, variable)
-    #             cubes.append(cube)
-
-    #     return iris.cube.CubeList(cubes).concatenate()
-    
     def get_cds_daily_data_gpd(
         self,
         bbox:tuple[float, float, float, float],
@@ -115,20 +104,6 @@ class DataClient():
             dss.append(ds)
         return xr.concat(dss, dim='time') # type: ignore
 
-    # def get_cds_daily_data_iris(
-    #     self,
-    #     bbox:tuple[float, float, float, float],
-    #     time_ranges: list[tuple[datetime, datetime]],
-    #     variable: str,
-    #     statistic: str = "daily_mean",
-    #     ) -> iris.cube.Cube:
-    #     cubes = []
-    #     for time_range in time_ranges:
-    #         print(f"Fetching data from CDS for range: {time_range[0]} - {time_range[1]}")
-    #         cube = self.cds_client.fetch_data_single_levels_iris("derived-era5-single-levels-daily-statistics", bbox=bbox, time_range=time_range, variable=variable, daily_statistic=statistic)
-    #         cubes.append(cube)
-    #     return iris.cube.CubeList(cubes).concatenate()    
-    
     def get_daily_data_gpd(
         self,
         bbox:tuple[float, float, float, float],
@@ -158,6 +133,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = time_range[0]
                     fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
+                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_single_levels_gpd("derived-era5-single-levels-daily-statistics", bbox=bbox, time_range=(fetch_start, fetch_end), variable=variable)
                     gdf_cds = gdf_cds.rename(columns=variable.cds_variable_renames())
                     max_retrieved_time = gdf_cds['valid_time'].max()
@@ -167,6 +143,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
+                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_single_levels_gpd("derived-era5-single-levels-daily-statistics", bbox=bbox, time_range=(fetch_start, fetch_end), variable=variable)
                     gdf_cds = gdf_cds.rename(columns=variable.cds_variable_renames())
                     gdfs.append(gdf_cds)
@@ -207,6 +184,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = time_range[0]
                     fetch_end = pd.to_datetime(min_retrieved_time).to_pydatetime() if min_retrieved_time is not None else time_range[1]
+                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_single_levels_xr("derived-era5-single-levels-daily-statistics", bbox=bbox, time_range=(fetch_start, fetch_end), variable=variable)
                     dss.append(ds_cds)
                 
@@ -214,6 +192,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
+                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_single_levels_xr("derived-era5-single-levels-daily-statistics", bbox=bbox, time_range=(fetch_start, fetch_end), variable=variable)
                     dss.append(ds_cds)
         
@@ -415,7 +394,7 @@ class DataClient():
         ds = self.get_daily_data_xr(bbox, time_ranges, Variable.tp)
         return ds
 
-    def mean_sea_level_pressure(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+    def mean_sea_level_pressure_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
         """
         Fetch mean sea level pressure data for a specified bounding box and time range.
 
@@ -434,7 +413,7 @@ class DataClient():
         """
         return self.cds_client.fetch_data_single_levels_gpd("derived-era5-single-levels-daily-statistics", Variable.mslp, bbox, time_range)
 
-    def z500_geopotential_mean(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
+    def z500_geopotential_mean_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime]) -> gpd.GeoDataFrame:
         """
         Fetch daily mean geopotential data at 500 hPa pressure level from ERA5.
 
@@ -454,3 +433,185 @@ class DataClient():
                 at 500 hPa pressure level for the specified spatial and temporal extent.
         """
         return self.cds_client.fetch_data_pressure_levels_gpd("derived-era5-pressure-levels-daily-statistics", Variable.geopotential, bbox, time_range, levels=[500])
+    
+    def fetch_data(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame | None:
+        """
+        Retrieve climate data for a specified parameter, bounding box, and time range.
+
+        Parameters:
+            parameter (str):
+                Climate parameter to retrieve. Supported values:
+                * "tmean": Mean 2m temperature
+                * "tmin": Minimum 2m temperature
+                * "tmax": Maximum 2m temperature
+                * "precipitation": Total precipitation
+                * "z500": 500 hPa geopotential mean
+                * "slp": Mean sea level pressure
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]):
+                Start and end datetime for the data request.
+            months (list[str] | list[int] | None, optional):
+                Months to filter data. Can be month names (full or abbreviated) or integers (1–12).
+                Defaults to None (all months included).
+            from_unit (str | None, optional):
+                Unit to convert from. If None, no conversion is applied.
+            to_unit (str | None, optional):
+                Unit to convert to. If None, no conversion is applied.
+
+        Returns:
+            gpd.GeoDataFrame:
+                GeoDataFrame containing the requested climate data.
+
+        Raises:
+            ValueError:
+                Raised if an invalid `parameter` is provided, or if month values are invalid
+                (integers not in 1–12, or unrecognized month names).
+
+        Notes:
+            * When `months` is specified, the time range is adjusted automatically from
+                the first day of the minimum month to the last day of the maximum month
+                within the given year range.
+        """
+        variable_map = {
+            "tmean": Variable.t2mean,
+            "tmin": Variable.t2min,
+            "tmax": Variable.t2max,
+            "precipitation": Variable.tp,
+            "z500": Variable.geopotential,
+            "slp": Variable.mslp
+        }
+        parameter = parameter.lower()
+        if parameter not in variable_map:
+            raise ValueError(f"Invalid parameter: {parameter}. Supported parameters are: {list(variable_map.keys())}")
+
+        variable = variable_map[parameter]
+
+        match variable:
+            case Variable.t2mean | Variable.t2min | Variable.t2max | Variable.tp:
+                # ToDo implement month filtering
+                gdf = self.get_daily_data_gpd(bbox, [time_range], variable)
+            case Variable.geopotential:
+                gdf = self.z500_geopotential_mean_gpd(bbox, time_range)
+            case Variable.mslp:
+                gdf = self.mean_sea_level_pressure_gpd(bbox, time_range)
+            case _:
+                raise ValueError(f"Unsupported variable: {variable}")
+        
+        return gdf
+    
+    def fetch_data_xr(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> xr.Dataset | None:
+        """
+        Retrieve climate data for a specified parameter, bounding box, and time range.
+
+        Parameters:
+            parameter (str):
+                Climate parameter to retrieve. Supported values:
+                * "tmean": Mean 2m temperature
+                * "tmin": Minimum 2m temperature
+                * "tmax": Maximum 2m temperature
+                * "precipitation": Total precipitation
+                * "z500": 500 hPa geopotential mean
+                * "slp": Mean sea level pressure
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]):
+                Start and end datetime for the data request.    
+            months (list[str] | list[int] | None, optional):
+                Months to filter data. Can be month names (full or abbreviated) or integers (1–12).
+                Defaults to None (all months included).
+            from_unit (str | None, optional):
+                Unit to convert from. If None, no conversion is applied.    
+            to_unit (str | None, optional):
+                Unit to convert to. If None, no conversion is applied.
+        Returns:
+            xr.Dataset:
+                xarray Dataset containing the requested climate data.
+        Raises:
+            ValueError:
+                Raised if an invalid `parameter` is provided, or if month values are invalid
+                (integers not in 1–12, or unrecognized month names).
+        """
+        variable_map = {
+            "tmean": Variable.t2mean,
+            "tmin": Variable.t2min,
+            "tmax": Variable.t2max,
+            "precipitation": Variable.tp,
+            "z500": Variable.geopotential,
+            "slp": Variable.mslp
+        }
+        parameter = parameter.lower()
+        if parameter not in variable_map:
+            raise ValueError(f"Invalid parameter: {parameter}. Supported parameters are: {list(variable_map.keys())}")
+
+        variable = variable_map[parameter]
+
+        match variable:
+            case Variable.t2mean | Variable.t2min | Variable.t2max | Variable.tp:
+                # ToDo implement month filtering
+                ds = self.get_daily_data_xr(bbox, [time_range], variable)
+            case Variable.geopotential:
+                # ToDo implement geopotential xr fetching
+                raise NotImplementedError("Geopotential xr fetching not implemented yet.")
+            case Variable.mslp:
+                # ToDo implement mslp xr fetching
+                raise NotImplementedError("Mean sea level pressure xr fetching not implemented yet.")
+            case _:
+                raise ValueError(f"Unsupported variable for xarray output: {variable}")
+        
+        return ds
+    
+    def fetch_data_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame | None:
+        return self.fetch_data(*args, **kwargs)
+    
+    @deprecated("Use `self.fetch_data()` instead.")
+    def GET(self, *args, **kwargs):
+        return self.fetch_data(*args, **kwargs)
+    
+
+    def gmst(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> gpd.GeoDataFrame:
+        """
+        Fetch global mean surface temperature data for a given bounding box and time range.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            from_unit (str, optional):
+                Source temperature unit. Default is "k" (Kelvin).
+            to_unit (str, optional):
+                Target temperature unit. Default is "c" (Celsius).
+
+        Returns:
+            gpd.GeoDataFrame: GeoDataFrame containing global mean surface temperature data
+            in the specified unit.
+        """
+        # Implementation will go here
+        gdf = self.cds_client._fetch_data_monthly_averaged_gpd('2m_temperature', bbox, time_range)
+        # Convert temperature units
+        gdf['t2m'] = Conversions.convert_temperature(gdf['t2m'], from_unit, to_unit)
+        return gdf
+    
+    def gmst_xr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c") -> xr.Dataset:
+        """
+        Fetch global mean surface temperature data for a given bounding box and time range.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                Tuple of (start_time, end_time) as datetime objects, inclusive.
+            from_unit (str, optional):
+                Source temperature unit. Default is "k" (Kelvin).
+            to_unit (str, optional):
+                Target temperature unit. Default is "c" (Celsius).
+        Returns:
+            xr.Dataset: xarray Dataset containing global mean surface temperature data
+            in the specified unit.
+        """
+        
+        ds = self.cds_client._fetch_data_monthly_averaged_xr('2m_temperature', bbox, time_range)
+        # Concatenate all Datasets
+        ds['t2m'].values = Conversions.convert_temperature(ds['t2m'].values, from_unit, to_unit)
+        return ds # type: ignore
