@@ -7,7 +7,12 @@ from datetime import datetime, timedelta
 from cdsapi import Client
 import tempfile
 import numpy as np
-import iris
+
+# doesnt work on windows
+try:
+    import iris
+except ImportError:
+    print("cant import iris")
 
 try:
     # Available in Python 3.12+ as per PEP 702

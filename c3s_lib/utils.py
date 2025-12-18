@@ -10,7 +10,7 @@ import base64
 from io import BytesIO
 from .plot import *
 
-class Util:
+class Utils:
     """Utility class for various geospatial data operations, including region selection and data manipulation."""
 
     @staticmethod
@@ -458,16 +458,16 @@ class Util:
 
         if datetime_col is not None:
             if date_range is not None:
-                gdf = Util.select_date_range_gdf(gdf, datetime_col=datetime_col, time_range=date_range)
+                gdf = Utils.select_date_range_gdf(gdf, datetime_col=datetime_col, time_range=date_range)
             if year_range is not None:
-                gdf = Util.select_year_gdf(gdf, datetime_col=datetime_col, year_range=year_range)
+                gdf = Utils.select_year_gdf(gdf, datetime_col=datetime_col, year_range=year_range)
             if month_range is not None:
-                gdf = Util.select_month_gdf(gdf, datetime_col=datetime_col, month_range=month_range)
+                gdf = Utils.select_month_gdf(gdf, datetime_col=datetime_col, month_range=month_range)
             if doy_range is not None:
-                gdf = Util.select_doy_gdf(gdf, datetime_col=datetime_col, doy_range=doy_range)
+                gdf = Utils.select_doy_gdf(gdf, datetime_col=datetime_col, doy_range=doy_range)
 
         if study_region is not None:
-            gdf = Util.select_study_region_gdf(gdf, study_region)
+            gdf = Utils.select_study_region_gdf(gdf, study_region)
         
         return gdf
 
