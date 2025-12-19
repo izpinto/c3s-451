@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import geopandas as gpd
-from typing import Union, Literal, Dict, List
+from typing import Any, Union, Literal, Dict, List
 import numpy as np
 from .utils import Utils
 import rasterio
@@ -386,29 +386,64 @@ class Process:
 
     # apply a weight to each value based on latitude
     @staticmethod
-    def weighted_values(gdf:gpd.GeoDataFrame, value_col:str, lat_col:str='latitude') -> gpd.GeoDataFrame:
+    def weighted_values(df:gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset, value_col:str, lat_col:str='latitude'
+                        ) -> gpd.GeoDataFrame|pd.DataFrame|Any:
+        
+        '''
+        Calculates the weights for the values based on latitude
 
-        out_col = f"{value_col}_weighted"
+        Parameters:
+            df (gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset):
+                Dataframe
+            value_col (str):
+                Value column needed for 2D dataframes, can be whatever for 3D dataframes
+            lat_col (str):
+                Name for the latitude column/coordinate
 
-        gdf = gdf.copy()
-        weights = np.cos(np.radians(gdf[lat_col]))
-        gdf[out_col] = gdf[value_col] * weights
-        gdf["_weight"] = weights
+        Returns:
+            gpd.GeoDataFrame|pd.DataFrame|xr.core.weighted.Weighted:
+                2D arrays return df with a new column 'value_col'+'_weighted'. xarray is returned as 'xarray.core.weighted.Weighted'
+        '''
 
-        return gdf
+        if isinstance(df, (xr.DataArray, xr.Dataset)):
+            if lat_col not in df.coords:
+                raise ValueError(f"Latitude coordinate '{lat_col}' not found")
+            
+            weights = np.cos(np.deg2rad(df[lat_col]))
+
+            return df.weighted(weights)
+        
+        if isinstance(df, (gpd.GeoDataFrame)):
+            if value_col not in df.columns:
+                raise ValueError(f"Column '{value_col}' not found")
+            if lat_col not in df.columns:
+                raise ValueError(f"Latitude coordinate '{lat_col}' not found")
+
+            out_col = f"{value_col}_weighted"
+
+            df = df.copy()
+            weights = np.cos(np.deg2rad(df[lat_col]))
+            df[out_col] = df[value_col] * weights
+            df["_weight"] = weights
+
+            return df
+
+        raise TypeError(
+            "weighted_values expects a GeoDataFrame, DataFrame, "
+            "xarray DataArray, or xarray Dataset"
+            )
 
     @staticmethod
     def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, groupby_col:str) -> gpd.GeoDataFrame:
 
         is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
-
-        if is_spatial:
-            crs = gdf.crs
+        crs = gdf.crs if is_spatial else None
 
         if '_weight' in gdf.columns:
             gdf = (
                 gdf.groupby(groupby_col)
                 .apply(lambda x: x[f"{value_col}_weighted"].sum() / x["_weight"].sum())
+                # .reset_index()
                 .reset_index(name=value_col)
             )
         else:
@@ -418,6 +453,40 @@ class Process:
             gdf = gpd.GeoDataFrame(gdf,geometry=gpd.points_from_xy(gdf.longitude, gdf.latitude), crs=crs)
 
         return gdf
+    
+    # J: So I don't know if this works anymore for spatial data. Had to change this because the old function (above) wasn't working for the trend analysis for some reason
+    # J: or if the output is even similar to the original
+    @staticmethod
+    def calculate_mean(gdf: gpd.GeoDataFrame, value_col: str, groupby_col: str) -> gpd.GeoDataFrame:
+
+        # Check if GeoDataFrame
+        is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
+        crs = gdf.crs if is_spatial else None
+
+        if '_weight' in gdf.columns:
+            # Weighted mean
+            weighted_mean = gdf.groupby(groupby_col).apply(
+                lambda x: x[f"{value_col}_weighted"].sum() / x["_weight"].sum()
+            )
+
+            # Convert to DataFrame safely
+            gdf_result = weighted_mean.reset_index()  # now each column is 1D
+            gdf_result = gdf_result.rename(columns={0: value_col})
+
+        else:
+            # Unweighted mean
+            gdf_result = gdf.groupby(groupby_col)[value_col].mean().reset_index()
+
+        if is_spatial:
+            # Recreate geometry if needed
+            gdf_result = gpd.GeoDataFrame(
+                gdf_result, 
+                geometry=gpd.points_from_xy(gdf_result.longitude, gdf_result.latitude), 
+                crs=crs
+            )
+
+        return gdf_result
+
 
     @staticmethod
     def calculate_max(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str, groupby_col:str) -> gpd.GeoDataFrame:
@@ -603,7 +672,7 @@ class Process:
 
         return adjusted_polygons
 
-    staticmethod
+    @staticmethod
     def calculate_yearly_statistics(
         time_series: dict[str, xr.DataArray],
         yearly_value: str,              # options: "max", "mean", "min"

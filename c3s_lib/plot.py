@@ -287,7 +287,7 @@ class Plot:
             raise ValueError(f"Unknown backend '{backend}'. Choose 'matplotlib' or 'plotly'.")
 
     @staticmethod
-    def add_image_below(fig, image_path,
+    def add_image_below(fig, image_path=LOGO_HORIZON_PATH,
                         min_height_frac=0.06,
                         max_height_frac=0.40,
                         pad_frac=0.02,
@@ -1491,114 +1491,6 @@ class Plot:
 
         return fig, ax
     
-    
-class KoppenGeiger:
-    @staticmethod
-    def load_kg_legend(path):
-        """Loads the Köppen–Geiger climate classification legend from a text file.
-
-        The legend file is expected to have a specific format (e.g., '1: Af Tropical rainforest [102 0 0]'),
-        which is parsed using a regular expression to extract the classification code, class abbreviation,
-        description, and normalized RGB color values.
-
-        Parameters:
-            path (str): The file path to the Köppen–Geiger legend text file.
-
-        Returns:
-            pd.DataFrame: A DataFrame with columns 'code' (int), 'class' (str), 'description' (str),
-                and 'rgb' (tuple of normalized floats).
-        """
-        rows = []
-        pattern = re.compile(r"^\s*(\d+):\s+(\w+)\s+(.*?)\s+\[(.*?)\]")
-
-        with open(path, "r") as f:
-            for line in f:
-                match = pattern.match(line)
-                if match:
-                    code   = int(match.group(1))
-                    klass  = match.group(2)
-                    desc   = match.group(3).strip()
-                    rgb    = tuple(int(v)/255 for v in match.group(4).split())
-                    rows.append((code, klass, desc, rgb))
-
-        return pd.DataFrame(rows, columns=["code", "class", "description", "rgb"])
-
-    @staticmethod
-    def draw_koppen_legend(fig, kg_legend, fontsize=8):
-        """Draws a custom, grouped Köppen-Geiger climate classification legend onto a Matplotlib figure.
-
-        The legend is placed in an inset Axes at the bottom of the figure, organized into main
-        climate categories (Tropical, Arid, Temperate, Cold, Polar) across four columns.
-
-
-
-        Parameters:
-            fig (matplotlib.figure.Figure): The Matplotlib figure object to add the legend to.
-            kg_legend (pd.DataFrame): A DataFrame containing the Köppen-Geiger legend data,
-                including 'rgb' color tuples and 'class' descriptions.
-            fontsize (int, optional): The font size for the legend text. Defaults to 8.
-
-        Returns:
-            matplotlib.axes.Axes: The newly created Axes object containing the legend.
-        """
-        
-        KG_GROUPS = {
-            "Tropical": [1,2,3],
-            "Arid": [4,5,6,7],
-            "Temperate": list(range(8,17)),
-            "Cold": list(range(17,29)),
-            "Polar": [29,30]
-        }
-
-        # Bottom inset axes for legend
-        fig.subplots_adjust(bottom=0.25)
-        ax = fig.add_axes([0.08, 0.04, 0.85, 0.3])
-        ax.axis("off")
-        ax.set_frame_on(False)
-
-        grouped_rows = []
-        for group, codes in KG_GROUPS.items():
-            # Group header (rgb=None)
-            grouped_rows.append((None, group))
-
-            # Rows for each class in group
-            subset = kg_legend[kg_legend["code"].isin(codes)]
-            for _, r in subset.iterrows():
-                text = f"{r['class']} — {r['description']}"
-                grouped_rows.append((r["rgb"], text))
-        
-        # Split into 4 columns
-        num_cols = 4
-        rows_per_col = int(np.ceil(len(grouped_rows) / num_cols))
-
-        for col in range(num_cols):
-            col_data = grouped_rows[col * rows_per_col:(col + 1) * rows_per_col]
-            if col == 1:
-                x0 = 0.02 + col * 0.20
-                y = 0.5
-            else:
-                x0 = 0.02 + col * 0.28
-                y = 0.5
-
-            for rgb, text in col_data:
-
-                if rgb is None:  # Group header
-                    ax.text(x0, y, text, fontweight="bold", fontsize=fontsize+5, va="top")
-                    y -= 0.065
-                    continue
-
-                # Small color box
-                ax.add_patch(mpatches.Rectangle(
-                    (x0, y - 0.03), 0.02, 0.03,
-                    color=rgb, ec="black", lw=0.3
-                ))
-
-                ax.text(x0 + 0.03, y, text, fontsize=fontsize, va="top")
-                y -= 0.05
-
-        return ax
-    
-    
     @staticmethod
     def plot_seasonal_cycles(seasonal_cycles, obs_seasonal_cycle, value_col:str,
                           legend_title:str=None, cmap:str=None, add_logos:bool=True,
@@ -1902,3 +1794,111 @@ class KoppenGeiger:
             return fig, axs_flat, img_ax
         else:
             return fig, axs_flat, None
+    
+    
+class KoppenGeiger:
+
+    @staticmethod
+    def load_kg_legend(path):
+        """Loads the Köppen–Geiger climate classification legend from a text file.
+
+        The legend file is expected to have a specific format (e.g., '1: Af Tropical rainforest [102 0 0]'),
+        which is parsed using a regular expression to extract the classification code, class abbreviation,
+        description, and normalized RGB color values.
+
+        Parameters:
+            path (str): The file path to the Köppen–Geiger legend text file.
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns 'code' (int), 'class' (str), 'description' (str),
+                and 'rgb' (tuple of normalized floats).
+        """
+        rows = []
+        pattern = re.compile(r"^\s*(\d+):\s+(\w+)\s+(.*?)\s+\[(.*?)\]")
+
+        with open(path, "r") as f:
+            for line in f:
+                match = pattern.match(line)
+                if match:
+                    code   = int(match.group(1))
+                    klass  = match.group(2)
+                    desc   = match.group(3).strip()
+                    rgb    = tuple(int(v)/255 for v in match.group(4).split())
+                    rows.append((code, klass, desc, rgb))
+
+        return pd.DataFrame(rows, columns=["code", "class", "description", "rgb"])
+
+    @staticmethod
+    def draw_koppen_legend(fig, kg_legend, fontsize=8):
+        """Draws a custom, grouped Köppen-Geiger climate classification legend onto a Matplotlib figure.
+
+        The legend is placed in an inset Axes at the bottom of the figure, organized into main
+        climate categories (Tropical, Arid, Temperate, Cold, Polar) across four columns.
+
+
+
+        Parameters:
+            fig (matplotlib.figure.Figure): The Matplotlib figure object to add the legend to.
+            kg_legend (pd.DataFrame): A DataFrame containing the Köppen-Geiger legend data,
+                including 'rgb' color tuples and 'class' descriptions.
+            fontsize (int, optional): The font size for the legend text. Defaults to 8.
+
+        Returns:
+            matplotlib.axes.Axes: The newly created Axes object containing the legend.
+        """
+        
+        KG_GROUPS = {
+            "Tropical": [1,2,3],
+            "Arid": [4,5,6,7],
+            "Temperate": list(range(8,17)),
+            "Cold": list(range(17,29)),
+            "Polar": [29,30]
+        }
+
+        # Bottom inset axes for legend
+        fig.subplots_adjust(bottom=0.25)
+        ax = fig.add_axes([0.08, 0.04, 0.85, 0.3])
+        ax.axis("off")
+        ax.set_frame_on(False)
+
+        grouped_rows = []
+        for group, codes in KG_GROUPS.items():
+            # Group header (rgb=None)
+            grouped_rows.append((None, group))
+
+            # Rows for each class in group
+            subset = kg_legend[kg_legend["code"].isin(codes)]
+            for _, r in subset.iterrows():
+                text = f"{r['class']} — {r['description']}"
+                grouped_rows.append((r["rgb"], text))
+        
+        # Split into 4 columns
+        num_cols = 4
+        rows_per_col = int(np.ceil(len(grouped_rows) / num_cols))
+
+        for col in range(num_cols):
+            col_data = grouped_rows[col * rows_per_col:(col + 1) * rows_per_col]
+            if col == 1:
+                x0 = 0.02 + col * 0.20
+                y = 0.5
+            else:
+                x0 = 0.02 + col * 0.28
+                y = 0.5
+
+            for rgb, text in col_data:
+
+                if rgb is None:  # Group header
+                    ax.text(x0, y, text, fontweight="bold", fontsize=fontsize+5, va="top")
+                    y -= 0.065
+                    continue
+
+                # Small color box
+                ax.add_patch(mpatches.Rectangle(
+                    (x0, y - 0.03), 0.02, 0.03,
+                    color=rgb, ec="black", lw=0.3
+                ))
+
+                ax.text(x0 + 0.03, y, text, fontsize=fontsize, va="top")
+                y -= 0.05
+
+        return ax
