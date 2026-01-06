@@ -1,13 +1,12 @@
 from cdsapi import Client
 from datetime import datetime, timedelta
+from .variable import Variable
+from ..utils import Utils
 import geopandas as gpd
 import pandas as pd
 import xarray as xr
 import tempfile
 import zipfile
-
-from . import Variable
-from . import Utils
 
 if __import__('sys').platform in ['linux']:
     import iris # type: ignore
