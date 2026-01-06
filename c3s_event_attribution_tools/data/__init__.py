@@ -23,7 +23,7 @@ class DataClient():
         The other classes e.g. CDSClient, MarsClient etc. are used in this client class.
         
     """
-    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None) -> None:
+    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, cordex_arco_token : str | None = None) -> None:
         """
         Instantiate the DataClient by calling the constructor.
         
@@ -36,11 +36,13 @@ class DataClient():
         self.cds_client = CDSClient(cds_key)
         self.beacon_cache = None
         self.mars_client = None
+        self.cordex_client = None
         if beacon_cache_url:
             self.beacon_cache = BeaconClient(beacon_cache_url=beacon_cache_url, beacon_token=beacon_token)
         if mars_key:
             self.mars_client = MarsClient(key=mars_key)  # type: ignore for mars on non-linux platforms
-    
+        if cordex_arco_token:
+            self.cordex_client = CordexClient(cordex_token=cordex_arco_token)
     
     def get_beacon_cache_daily_gpd(
         self, 
@@ -644,6 +646,74 @@ class DataClient():
         return self.cds_client.fetch_cmip6_xr(
             variable, model, bbox, time_range, experiment, temporal_resolution
         )
+        
+    def fetch_cordex_xr(self, variable: str, model_url: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> xr.Dataset:
+        """Fetch CORDEX data as an xarray Dataset.
+
+        Parameters:
+            variable (str): CORDEX variable name (e.g. "tasmax", "tas", "pr").
+            model_url (str): CORDEX model URL (e.g. "eur11-hist-day-cccma_canesm2-clmcom_clm_cclm4_8_17-r1i1p1").
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]): (start, end) datetime range.
+
+        Returns:
+            xr.Dataset: CORDEX data for the requested selection.
+        """
+        if self.cordex_client is None:
+            raise ValueError("CORDEX client not initialized.")
+        
+        return self.cordex_client.fetch_cordex_xr(
+            variable=variable,
+            model_url=model_url,
+            bbox=bbox,
+            time_range=time_range
+        )
+        
+    def fetch_cordex(self, variable: str, model_url: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
+        """Fetch CORDEX data as a GeoDataFrame.
+        
+        Parameters:
+            variable (str): CORDEX variable name (e.g. "tasmax", "tas", "pr").
+            model_url (str): CORDEX model URL (e.g. "eur11-hist-day-cccma_canesm2-clmcom_clm_cclm4_8_17-r1i1p1").
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]): (start, end) datetime range.
+
+        Returns:
+            gpd.GeoDataFrame: CORDEX data for the requested selection.
+        """
+        if self.cordex_client is None:
+            raise ValueError("CORDEX client not initialized.")
+        
+        return self.cordex_client.fetch_cordex_gpd(
+            variable=variable,
+            model_url=model_url,
+            bbox=bbox,
+            time_range=time_range
+        )
+        
+    def fetch_cordex_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame:
+        """Alias for :meth:`fetch_cordex` returning a GeoDataFrame.
+
+        This wrapper exists for consistency with the `*_gpd` naming used in the
+        library.
+
+        Returns:
+            gpd.GeoDataFrame: CORDEX data for the requested variable/extent/time.
+        """
+        return self.fetch_cordex(*args, **kwargs)
+    
+    def list_cordex_model_urls(self) -> list[str]:
+        """List available CORDEX model URLs.
+
+        Returns:
+            list[str]: List of available CORDEX model URLs.
+        """
+        if self.cordex_client is None:
+            raise ValueError("CORDEX client not initialized.")
+        
+        return self.cordex_client.list_available_models()
 
     @deprecated("Use `self.fetch_data()` instead.")
     def GET(self, *args, **kwargs):
