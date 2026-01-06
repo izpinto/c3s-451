@@ -11,6 +11,19 @@ if __import__('sys').platform in ['linux']:
 
 class BeaconDataClient():
     def __init__(self, beacon_cache_url: str, beacon_token: str | None = None) -> None:
+        """
+        Initialize the BeaconDataClient with connection details for the Beacon API.
+
+        This constructor sets up the internal beacon client using a specific 
+        cache URL and an optional authentication token.
+
+        Parameters:
+            beacon_cache_url (str):
+                The base URL for the Beacon cache service.
+            beacon_token (str | None):
+                An optional JSON Web Token (JWT) for authenticated access to 
+                the Beacon API. Default is None.
+        """
         self.beacon_cache_url = beacon_cache_url
         self.beacon_token = beacon_token
 
@@ -19,71 +32,29 @@ class BeaconDataClient():
             jwt_token=self.beacon_token
         )
 
-    # copied for CDSClient so not the best practice but quick solution
-    def _split_time_range_by_year(
-        self,
-        start: datetime,
-        end: datetime
-    ) -> list[tuple[datetime, datetime]]:
-        """
-        Split a time range into sub-ranges, each within a single calendar year.
-        """
-        ranges = []
-        current_start = start
-        # iterate until within same year as end
-        while current_start.year < end.year:
-            year_end = datetime(year=current_start.year, month=12, day=31)
-            ranges.append((current_start, year_end))
-            current_start = datetime(year=current_start.year + 1, month=1, day=1)
-        ranges.append((current_start, end))
-        return ranges
-
-
-    def _split_time_rangbe_by_year_and_months(
-            self,
-            start: datetime,
-            end: datetime,
-            months: list[str]|list[int]
-        ) -> list[tuple[datetime, datetime]]:
-        
-        result = []
-
-        def last_day_of_month(dt: datetime) -> datetime:
-            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
-            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
-        
-        current = datetime(start.year, start.month, start.day)
-
-        while current <= end:
-            if current.month in months:
-                month_start = current
-                month_end = last_day_of_month(current)
-
-                actual_start = max(month_start, start)
-                actual_end = min(month_end, end)
-
-                if actual_start <= actual_end:
-                    result.append((actual_start, actual_end))
-                
-            if current.month == 12:
-                current = datetime(current.year + 1, 1, 1)
-            else:
-                current = datetime(current.year, current.month + 1, 1)
-        
-        return result
-
+    
     
     def fetch_from_era5_daily_query(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> beacon_api.JSONQuery:
         """
-        Create a query to fetch data from ERA5 Daily Zarr dataset in Beacon Cache.
-        Parameters
-        ----------
-        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
-        time_range : tuple (start_datetime, end_datetime)
-        variable : str, variable name to fetch. Available: ['t2m', 't2m_max', 't2m_tmin', 'total_precipitation']
-        Returns
-        -------
-        beacon_api.JSONQuery with data
+        Create a query to fetch data from the ERA5 Daily Zarr dataset in Beacon Cache.
+
+        This method constructs a structured JSON query for the Beacon API, selecting 
+        spatial and temporal columns alongside the requested variable. It applies 
+        spatial filtering via a bounding box and temporal filtering via the 
+        provided time range.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                A tuple containing the (start_date, end_date) for the data query.
+            variable (str):
+                The variable name to fetch. Available options include: 
+                't2m', 't2m_max', 't2m_tmin', and 'total_precipitation'.
+
+        Returns:
+            beacon_api.JSONQuery: A configured query object ready to be executed 
+            against the Beacon Cache.
         """
 
         era5_table = self.beacon_client.list_tables()['daily']
@@ -99,15 +70,24 @@ class BeaconDataClient():
 
     def fetch_from_era5_daily_zarr_xr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> xr.Dataset:
         """
-        Fetch data from ERA5 Daily Zarr dataset in Beacon Cache.
-        Parameters
-        ----------
-        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
-        time_range : tuple (start_datetime, end_datetime)
-        variable : str, variable name to fetch. Available: ['t2m', 't2m_max', 't2m_tmin', 'total_precipitation']
-        Returns
-        -------
-        xarray.Dataset with data
+        Fetch data from the ERA5 Daily Zarr dataset in Beacon Cache as an xarray Dataset.
+
+        This method executes a Beacon API query for the specified variable and 
+        geographic area, converting the resulting data into a multi-dimensional 
+        xarray Dataset with longitude, latitude, and time as dimensions.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                A tuple containing the (start_date, end_date) for the data request.
+            variable (str):
+                The variable name to fetch. Available options include: 
+                't2m', 't2m_max', 't2m_tmin', and 'total_precipitation'.
+
+        Returns:
+            xr.Dataset: An xarray Dataset containing the fetched data organized 
+            by spatial and temporal dimensions.
         """
 
         query = self.fetch_from_era5_daily_query(bbox, time_range, variable)
@@ -117,15 +97,28 @@ class BeaconDataClient():
 
     def fetch_from_era5_daily_zarr_iris(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str):
         """
-        Fetch data from ERA5 Daily Zarr dataset in Beacon Cache.
-        Parameters
-        ----------
-        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
-        time_range : tuple (start_datetime, end_datetime)
-        variable : str, variable name to fetch. Available: ['t2m', 't2m_max', 't2m_tmin', 'total_precipitation']
-        Returns
-        -------
-        Iris cube with data
+        Fetch data from the ERA5 Daily Zarr dataset in Beacon Cache as an Iris cube.
+
+        This method executes a Beacon API query, saves the resulting data to a 
+        temporary NetCDF file with defined spatial and temporal dimensions, and 
+        loads it as an Iris cube. Note that this functionality is restricted to 
+        Linux environments due to Iris library dependencies.
+
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                A tuple containing the (start_date, end_date) for the data request.
+            variable (str):
+                The variable name to fetch. Available options include: 
+                't2m', 't2m_max', 't2m_tmin', and 'total_precipitation'.
+
+        Returns:
+            iris.cube.Cube: An Iris cube containing the fetched daily data with 
+            spatial and temporal coordinates.
+
+        Raises:
+            RuntimeError: If the method is called on a non-Linux platform.
         """
         
         # Check platform
@@ -144,17 +137,24 @@ class BeaconDataClient():
 
     def fetch_from_era5_daily_zarr_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
         """
-        Fetch data from ERA5 Zarr dataset in Beacon Cache.
+        Fetch data from the ERA5 Daily Zarr dataset in Beacon Cache as a GeoDataFrame.
 
-        Parameters
-        ----------
-        bbox : tuple (min_lon, min_lat, max_lon, max_lat)
-        time_range : tuple (start_datetime, end_datetime)
-        variable : str, variable name to fetch. Available: ['t2m', 't2m_max', 't2m_tmin', 'total_precipitation']
+        This method executes a Beacon API query, converts the resulting tabular
+        data into a pandas DataFrame, and then constructs a GeoDataFrame by
+        generating point geometries from the longitude and latitude coordinates.
 
-        Returns
-        -------
-        GeoDataFrame with data
+        Parameters:
+            bbox (tuple[float, float, float, float]):
+                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
+            time_range (tuple[datetime, datetime]):
+                A tuple containing the (start_date, end_date) for the data request.
+            variable (str):
+                The variable name to fetch. Available options include: 
+                't2m', 't2m_max', 't2m_tmin', and 'total_precipitation'.
+
+        Returns:
+            gpd.GeoDataFrame: A GeoDataFrame containing the fetched data with 
+            spatial point geometries and temporal information.
         """
         query = self.fetch_from_era5_daily_query(bbox, time_range, variable)
 

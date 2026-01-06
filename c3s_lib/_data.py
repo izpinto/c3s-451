@@ -1,3 +1,14 @@
+# BELANGRIJK, VERVANGEN DOOR data DIRECTORY, deze NIET MEER GEBRUIKEN.
+
+#  _   _ _____ _____ _____   _____  _________________ _   _ _____ _   __ _____ _   _ _ 
+# | \ | |_   _|  ___|_   _| |  __ \|  ___| ___ \ ___ \ | | |_   _| | / /|  ___| \ | | |
+# |  \| | | | | |__   | |   | |  \/| |__ | |_/ / |_/ / | | | | | | |/ / | |__ |  \| | |
+# | . ` | | | |  __|  | |   | | __ |  __|| ___ \    /| | | | | | |    \ |  __|| . ` | |
+# | |\  |_| |_| |___  | |   | |_\ \| |___| |_/ / |\ \| |_| |_| |_| |\  \| |___| |\  |_|
+# \_| \_/\___/\____/  \_/    \____/\____/\____/\_| \_|\___/ \___/\_| \_/\____/\_| \_(_)
+                                                                                     
+                                                                                     
+
 import subprocess
 import pandas as pd
 import xarray as xr
@@ -7,6 +18,9 @@ from datetime import datetime, timedelta
 from cdsapi import Client
 import tempfile
 import numpy as np
+
+from c3s_lib.data.mars_client import MarsClient
+from c3s_lib.utils import Utils
 
 # doesnt work on windows
 try:
@@ -807,7 +821,15 @@ class DataClient():
 
         return final_gdf
 
-    def fetch_data(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
+    def fetch_data(
+        self,
+        parameter: str,
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        months: list[str] | list[int] | None = None,
+        from_unit: str | None = None,
+        to_unit: str | None = None,
+    ) -> gpd.GeoDataFrame:
         """
         Retrieve climate data for a specified parameter, bounding box, and time range.
 
@@ -847,14 +869,6 @@ class DataClient():
                 within the given year range.
         """
 
-        return self.GET(parameter, bbox, time_range, months, from_unit, to_unit)
-
-    @deprecated("Use `self.fetch_data()` instead.")
-    def GET(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame:
-        """
-        Deprecated:
-            Use `self.fetch_data()` instead.
-        """
         parameter = parameter.lower()
 
         month_map = {
@@ -883,7 +897,7 @@ class DataClient():
             "dec": 12,
             "december": 12,
         }
-        
+
         # Build kwargs only if explicitly set
         unit_kwargs = {}
         if from_unit is not None:
@@ -934,63 +948,29 @@ class DataClient():
             case _:
                 return ValueError(f"Unsupported parameter: {parameter}")
 
+    @deprecated("Use `self.fetch_data()` instead.")
+    def GET(
+        self,
+        parameter: str,
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        months: list[str] | list[int] | None = None,
+        from_unit: str | None = None,
+        to_unit: str | None = None,
+    ) -> gpd.GeoDataFrame:
+        """
+        Deprecated:
+            Use `self.fetch_data()` instead.
+        """
+        return self.fetch_data(parameter, bbox, time_range, months, from_unit, to_unit)
+
+
 class CDSClient():
     CDS_API_URL = "https://cds.climate.copernicus.eu/api"
     
     def __init__(self, cds_key: str):
         self.cds_client = Client(self.CDS_API_URL, key=cds_key)
         
-    def _split_time_range_by_year(
-        self,
-        start: datetime,
-        end: datetime
-    ) -> list[tuple[datetime, datetime]]:
-        """
-        Split a time range into sub-ranges, each within a single calendar year.
-        """
-        ranges = []
-        current_start = start
-        # iterate until within same year as end
-        while current_start.year < end.year:
-            year_end = datetime(year=current_start.year, month=12, day=31)
-            ranges.append((current_start, year_end))
-            current_start = datetime(year=current_start.year + 1, month=1, day=1)
-        ranges.append((current_start, end))
-        return ranges
-    
-    def _split_time_rangbe_by_year_and_months(
-        self,
-        start: datetime,
-        end: datetime,
-        months: list[str]|list[int]
-    ) -> list[tuple[datetime, datetime]]:
-    
-        result = []
-
-        def last_day_of_month(dt: datetime) -> datetime:
-            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
-            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
-        
-        current = datetime(start.year, start.month, start.day)
-
-        while current <= end:
-            if current.month in months:
-                month_start = current
-                month_end = last_day_of_month(current)
-
-                actual_start = max(month_start, start)
-                actual_end = min(month_end, end)
-
-                if actual_start <= actual_end:
-                    result.append((actual_start, actual_end))
-                
-            if current.month == 12:
-                current = datetime(current.year + 1, 1, 1)
-            else:
-                current = datetime(current.year, current.month + 1, 1)
-        
-        return result
-    
     def _build_request_monthly_averaged(self, variable: str, time_range: tuple[datetime, datetime], bbox: tuple[float, float, float, float]) -> dict:
         start_dt, end_dt = time_range
         # convert to pandas Timestamp for range generation
@@ -1110,7 +1090,7 @@ class CDSClient():
         straight to a pandas DataFrame, then to a GeoDataFrame.
         Returns a list of GeoDataFrames, one per year.
         """
-        ranges = self._split_time_range_by_year(*time_range)
+        ranges = Utils.split_time_range_by_year(*time_range)
         gdfs = []
         for start_dt, end_dt in ranges:
             req = self._build_request_pressure_levels(variables, bbox, (start_dt, end_dt), levels, daily_statistic=daily_statistic)
@@ -1150,7 +1130,7 @@ class CDSClient():
         straight to a pandas DataFrame, then to a GeoDataFrame.
         Returns a list of GeoDataFrames, one per year.
         """
-        ranges = self._split_time_rangbe_by_year_and_months(time_range[0], time_range[1], months) if months is not None else self._split_time_range_by_year(*time_range)
+        ranges = Utils.split_time_range_by_year_and_months(time_range[0], time_range[1], months) if months is not None else Utils.split_time_range_by_year(*time_range)
         min_start = min(t[0] for t in ranges)
         max_end = max(t[1] for t in ranges)
 
@@ -1195,24 +1175,7 @@ class BeaconDataClient():
         # Do a check for connecting to the Beacon Cache Layer
         self.beacon_client.check_status()
 
-    # copied for CDSClient so not the best practice but quick solution
-    def _split_time_range_by_year(
-        self,
-        start: datetime,
-        end: datetime
-    ) -> list[tuple[datetime, datetime]]:
-        """
-        Split a time range into sub-ranges, each within a single calendar year.
-        """
-        ranges = []
-        current_start = start
-        # iterate until within same year as end
-        while current_start.year < end.year:
-            year_end = datetime(year=current_start.year, month=12, day=31)
-            ranges.append((current_start, year_end))
-            current_start = datetime(year=current_start.year + 1, month=1, day=1)
-        ranges.append((current_start, end))
-        return ranges
+    
 
 
     def _split_time_rangbe_by_year_and_months(
@@ -1427,8 +1390,3 @@ class BeaconDataClient():
 
         df['longitude'] = (df['longitude'] + 180) % 360 - 180
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
-
-
-class CordexClient():
-    def __init__(self):
-        pass

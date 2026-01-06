@@ -53,6 +53,25 @@ class Conversions:
         
     @staticmethod
     def _inner_convert_temperature(array: np.ndarray, from_unit: str, to_unit: str) -> np.ndarray:
+        """
+        This static helper method handles the mathematical transformation between 
+        Kelvin, Celsius, and Fahrenheit. It ensures consistency by normalizing 
+        unit strings to lowercase before processing.
+
+        Parameters:
+            array (np.ndarray):
+                The numeric array containing temperature values to be converted.
+            from_unit (str):
+                The current unit of the data. Supported values: "k", "c", "f".
+            to_unit (str):
+                The target unit for the data. Supported values: "k", "c", "f".
+
+        Returns:
+            np.ndarray: A new array containing the converted temperature values.
+
+        Raises:
+            ValueError: If an unsupported unit or conversion pair is provided.
+        """
         if from_unit == to_unit:
             return array
         # Convert unit lowercase for consistency
