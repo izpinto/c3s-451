@@ -1,12 +1,12 @@
 from cdsapi import Client
 from datetime import datetime, timedelta
+from .variable import Variable
+from ..utils import Utils
 import geopandas as gpd
 import pandas as pd
 import xarray as xr
 import tempfile
-
-from . import Variable
-from . import Utils
+import zipfile
 
 if __import__('sys').platform in ['linux']:
     import iris # type: ignore
@@ -724,3 +724,64 @@ class CDSClient():
             iris_cube = iris.iris.load_cube(tmp.name) # type: ignore # we have checked platform above
             return iris_cube      
 
+    def _build_request_cmip6(self, variable: str, model:str, time_range: tuple[datetime, datetime], bbox: tuple[float, float, float, float], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> dict:
+        start_dt, end_dt = time_range
+        # convert to pandas Timestamp for range generation
+        start = pd.Timestamp(start_dt)
+        end = pd.Timestamp(end_dt)
+        dates = pd.date_range(start=start, end=end, freq='D')
+
+        year = str(start.year)
+        months = sorted({d.strftime('%m') for d in dates})
+        days = sorted({d.strftime('%d') for d in dates})
+
+        request = {
+            "temporal_resolution": temporal_resolution,
+            "experiment": experiment,
+            "variable": variable,
+            "model": model,
+            "year": [year],
+            "month": months,
+            "day": days,
+            "time_zone": "utc+00:00",
+            "frequency": "1_hourly",
+            # CDS expects [north, west, south, east]
+            "area": [bbox[3], bbox[0], bbox[1], bbox[2]],
+        }
+        
+        return request
+
+    def _fetch_data_cmip6_netcdf(self, variable: str, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> str:
+        dataset = "projections-cmip6"
+        req = self._build_request_cmip6(variable, model, time_range, bbox, experiment, temporal_resolution)
+        temp_dir = tempfile.TemporaryDirectory(delete=False)
+        with temp_dir:
+            zip_path = f"{temp_dir.name}/cmip6_data.zip"
+            self.cds_client.retrieve(
+                dataset,
+                req
+            ).download(target=zip_path)
+            # unzip the file
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir.name)
+            # find the netcdf file in the extracted files
+            for file_name in zip_ref.namelist():
+                if file_name.endswith('.nc'):
+                    return f"{temp_dir.name}/{file_name}"
+            raise FileNotFoundError("No netCDF file found in the downloaded CMIP6 data.")
+        
+    def fetch_cmip6_xr(self, variable: str, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> xr.Dataset:
+        file = self._fetch_data_cmip6_netcdf(variable, model, bbox, time_range, experiment, temporal_resolution)
+        ds = xr.open_dataset(file)
+        # filter time to exact range
+        ds = ds.sel(time=slice(time_range[0], time_range[1]))
+        return ds
+    
+    def fetch_cmip6_gpd(self, variable: str, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> gpd.GeoDataFrame:
+        ds = self.fetch_cmip6_xr(variable, model, bbox, time_range, experiment, temporal_resolution)
+        # convert entire dataset to DataFrame
+        df = ds.to_dataframe().reset_index()
+        # create geometry
+        df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+        gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+        return gdf

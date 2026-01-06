@@ -566,8 +566,85 @@ class DataClient():
         return ds
     
     def fetch_data_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame | None:
+        """Alias for :meth:`fetch_data` returning a GeoDataFrame.
+
+        This exists mostly for backwards compatibility and symmetry with other
+        `*_gpd` helpers.
+
+        Returns:
+            gpd.GeoDataFrame | None: Output of :meth:`fetch_data`.
+        """
         return self.fetch_data(*args, **kwargs)
-    
+
+    def fetch_cmip6_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame:
+        """Alias for :meth:`fetch_cmip6` returning a GeoDataFrame.
+
+        This wrapper exists for consistency with the `*_gpd` naming used in the
+        library.
+
+        Returns:
+            gpd.GeoDataFrame: CMIP6 data for the requested variable/extent/time.
+        """
+        return self.fetch_cmip6(*args, **kwargs)
+
+    def fetch_cmip6(
+        self,
+        variable: str,
+        model: str,
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        experiment: str = "ssp5_8_5",
+        temporal_resolution: str = "daily",
+    ) -> gpd.GeoDataFrame:
+        """Fetch CMIP6 data from CDS as a GeoDataFrame.
+
+        Parameters:
+            variable (str): CMIP6 variable name (e.g. "tasmax", "tas", "pr").
+            model (str): CMIP6 model name (e.g. "access_cm2").
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]): (start, end) datetime range.
+            experiment (str, optional): Scenario/experiment identifier.
+                Defaults to "ssp5_8_5".
+            temporal_resolution (str, optional): Temporal resolution (e.g. "daily").
+                Defaults to "daily".
+
+        Returns:
+            gpd.GeoDataFrame: CMIP6 data for the requested selection.
+        """
+        return self.cds_client.fetch_cmip6_gpd(
+            variable, model, bbox, time_range, experiment, temporal_resolution
+        )
+
+    def fetch_cmip6_xr(
+        self,
+        variable: str,
+        model: str,
+        bbox: tuple[float, float, float, float],
+        time_range: tuple[datetime, datetime],
+        experiment: str = "ssp5_8_5",
+        temporal_resolution: str = "daily",
+    ) -> xr.Dataset:
+        """Fetch CMIP6 data from CDS as an xarray Dataset.
+
+        Parameters:
+            variable (str): CMIP6 variable name (e.g. "tasmax", "tas", "pr").
+            model (str): CMIP6 model name (e.g. "access_cm2").
+            bbox (tuple[float, float, float, float]):
+                Bounding box as (min_lon, min_lat, max_lon, max_lat).
+            time_range (tuple[datetime, datetime]): (start, end) datetime range.
+            experiment (str, optional): Scenario/experiment identifier.
+                Defaults to "ssp5_8_5".
+            temporal_resolution (str, optional): Temporal resolution (e.g. "daily").
+                Defaults to "daily".
+
+        Returns:
+            xr.Dataset: CMIP6 data for the requested selection.
+        """
+        return self.cds_client.fetch_cmip6_xr(
+            variable, model, bbox, time_range, experiment, temporal_resolution
+        )
+
     @deprecated("Use `self.fetch_data()` instead.")
     def GET(self, *args, **kwargs):
         return self.fetch_data(*args, **kwargs)
