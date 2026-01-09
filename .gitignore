@@ -1,4 +1,4 @@
-data/
+library/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -90,3 +90,7 @@ library/mars.ipynb
 ecmwf.ipynb
 
 *.nc:Zone.Identifier
+
+*.pyc
+
+TestingJasper.ipynb

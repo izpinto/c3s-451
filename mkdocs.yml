@@ -1,0 +1,92 @@
+site_name: C3S2-451 Extreme Event Monitoring Python Library
+theme:
+    name: material
+    features:
+        # - navigation.expand
+        - content.code.copy
+        - content.code.annotate
+        # - search.share
+        - navigation.tabs          # Horizontal top menu
+        - navigation.tabs.sticky   # Keep menu visible
+        - navigation.top           # "Back to top" button
+        - navigation.tracking      # Update URL as user scrolls
+        - toc.follow               # Highlight TOC as user scrolls
+        - content.tabs.link        # Sync code tabs (e.g., all tabs switch to 'Conda')
+    palette:
+        # Palette toggle for light mode
+        - scheme: default
+          toggle:
+              icon: material/brightness-7
+              name: Switch to dark mode
+
+        # Palette toggle for dark mode
+        - scheme: slate
+          toggle:
+              icon: material/brightness-4
+              name: Switch to light mode
+
+repo_url: https://github.com/maris-development/c3s-451
+plugins:
+    - search
+    - mike:
+          # These fields are all optional; the defaults are as below...
+          alias_type: symlink
+          redirect_template: null
+          deploy_prefix: ""
+          canonical_version: latest
+          version_selector: true
+          css_dir: css
+          javascript_dir: js
+    - mkdocstrings:
+          handlers:
+              python:
+                  paths: ["."] # make MkDocs see your local package
+                  options:
+                      docstring_style: google
+extra:
+    version:
+        provider: mike
+        default: latest
+
+markdown_extensions:
+    - admonition
+    - pymdownx.details
+    - pymdownx.superfences
+    - pymdownx.highlight:
+          anchor_linenums: true
+          line_spans: __span
+          pygments_lang_class: true
+    - pymdownx.inlinehilite
+    - pymdownx.snippets
+
+nav:
+    # - Home: index.md
+    # - Installation: installation.md
+    # - Getting Started: getting_started.md
+    # - Using The Data Lake:
+    #       - Exploring: using/exploring.md
+    #       - Querying: using/querying.md
+    #       - Tables (*collections): using/tables.md
+    #       - Datasets: using/datasets.md
+    # - Examples:
+    #       - World Ocean Database: examples/wod.md
+    - API Documentation:
+        - Home: index.md
+        - Data Retrieval functions: 
+            - DataClient: reference/data/data_client.md
+            - CDSClient: reference/data/cds_client.md
+            - MarsClient: reference/data/mars_client.md
+            - BeaconClient: reference/data/beacon_client.md
+            - CordexClient: reference/data/cordex_client.md
+            - Conversions: reference/data/conversions.md
+            - Variables: reference/data/variable.md
+        - Plot functions: reference/plot.md
+        - Process functions: reference/process.md
+        - Utility functions: reference/utils.md
+    #       - Client: reference/client.md
+    #       - Query: reference/query.md
+    #       - Dataset: reference/dataset.md
+    #       - Functions: reference/functions.md
+    #       - Table: reference/table.md
+    # - Changelog: changelog.md
+    - Event Attribution Homepage: https://event-attribution.copernicus-climate.eu/
