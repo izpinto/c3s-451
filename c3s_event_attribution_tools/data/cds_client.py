@@ -8,6 +8,7 @@ import pandas as pd
 import xarray as xr
 import tempfile
 import zipfile
+import cftime
 from hashlib import sha256
 
 if __import__('sys').platform in ['linux']:
@@ -792,8 +793,12 @@ class CDSClient():
     def fetch_cmip6_xr(self, variable: str, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> xr.Dataset:
         file = self._fetch_data_cmip6_netcdf(variable, model, bbox, time_range, experiment, temporal_resolution)
         ds = xr.open_dataset(file)
+        # Convert filter time range to approriate calender
+        xr_time_start = Utils.datetime_to_xr_time(time_range[0], ds)
+        xr_time_end = Utils.datetime_to_xr_time(time_range[1], ds)
+
         # filter time to exact range
-        ds = ds.sel(time=slice(time_range[0], time_range[1]))
+        ds = ds.sel(time=slice(xr_time_start, xr_time_end))
         return ds
     
     def fetch_cmip6_gpd(self, variable: str, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> gpd.GeoDataFrame:

@@ -705,3 +705,48 @@ class Utils:
             (min_lon, min_lat, max_lon, max_lat)
         """
         return (west, south, east, north)
+    
+    @staticmethod
+    def datetime_to_xr_time(dt: datetime, ds: xr.Dataset) -> Any:
+        """
+        Convert a Python datetime.datetime to a value compatible with ds.time.
+
+        Parameters
+        ----------
+        dt : datetime.datetime
+            Python datetime (naive or timezone-removed).
+        ds : xarray.Dataset or DataArray
+            Dataset with a time coordinate.
+
+        Returns
+        -------
+        datetime.datetime or cftime.datetime
+        """
+
+        import cftime
+        sample = ds.time.values[0]
+
+        # Dataset uses cftime (non-standard calendar)
+        if isinstance(sample, cftime.datetime):
+            calendar = ds.time.encoding.get("calendar", "standard")
+
+            cls = {
+                "noleap": cftime.DatetimeNoLeap,
+                "365_day": cftime.DatetimeNoLeap,
+                "360_day": cftime.Datetime360Day,
+                "julian": cftime.DatetimeJulian,
+                "gregorian": cftime.DatetimeGregorian,
+                "standard": cftime.DatetimeGregorian,
+                "proleptic_gregorian": cftime.DatetimeProlepticGregorian,
+            }.get(calendar)
+
+            if cls is None:
+                raise ValueError(f"Unsupported calendar: {calendar}")
+
+            return cls(
+                dt.year, dt.month, dt.day,
+                dt.hour, dt.minute, dt.second
+            )
+
+        # Dataset already uses pandas / numpy datetime
+        return pd.Timestamp(dt).to_pydatetime()
