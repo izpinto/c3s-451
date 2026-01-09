@@ -740,16 +740,16 @@ class CDSClient():
         end = pd.Timestamp(end_dt)
         dates = pd.date_range(start=start, end=end, freq='D')
 
-        year = str(start.year)
+        years = sorted({d.strftime('%Y') for d in dates})
         months = sorted({d.strftime('%m') for d in dates})
         days = sorted({d.strftime('%d') for d in dates})
-
+        
         request = {
             "temporal_resolution": temporal_resolution,
             "experiment": experiment,
             "variable": variable,
             "model": model,
-            "year": [year],
+            "year": years,
             "month": months,
             "day": days,
             "time_zone": "utc+00:00",
@@ -769,6 +769,7 @@ class CDSClient():
         temp_file_path = os.path.join(temp_dir, f"cds_cmip6_{req_hash}.nc")
         
         if not os.path.exists(temp_file_path):
+            print("Downloading CMIP6 data from CDS, this may take a while...")
             zip_path = os.path.join(temp_dir, f"cds_cmip6_{req_hash}.zip")
             # download as zip and extract
             self.cds_client.retrieve(
@@ -784,7 +785,8 @@ class CDSClient():
                     extracted_path = os.path.join(temp_dir, file_name)
                     os.rename(extracted_path, temp_file_path)
                     break
-
+        else:
+            print("Using locally cached CMIP6 data from CDS.")
         return temp_file_path
         
     def fetch_cmip6_xr(self, variable: str, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> xr.Dataset:
