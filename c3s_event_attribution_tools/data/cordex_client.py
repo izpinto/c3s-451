@@ -8,7 +8,6 @@ class CordexClient:
         Placeholder for CordexClient
         """
         self.cordex_token = cordex_token
-        self.cordex_arco_base_url = "https://arco.datastores.ecmwf.int/cadl-arco-geo-014/arco/projections_cordex_domains_single_levels"
 
     def fetch_cordex_xr(
         self,
@@ -26,12 +25,11 @@ class CordexClient:
             bbox (tuple): A tuple defining the bounding box (min_lat, min_lon, max_lat, max_lon).
             time_range (tuple): A tuple defining the time range (start_time, end_time).
         """
-        zarr_url = f"{self.cordex_arco_base_url}/{model_url}/geoChunked.zarr"
         headers = {
             "Authorization": f"Bearer {self.cordex_token}",
         }
         
-        ds = xr.open_zarr(zarr_url, consolidated=True, storage_options={"headers": headers})
+        ds = xr.open_zarr(model_url, consolidated=True, storage_options={"headers": headers})
         variable_ds = ds[variable]
         bbox_filtered_ds = variable_ds.sel(
             longitude=slice(bbox[1], bbox[3]),
