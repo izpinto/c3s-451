@@ -99,6 +99,12 @@ class CDSClient():
         ds = xr.open_dataset(file)
         # filter time to exact range
         ds = ds.sel(valid_time=slice(time_range[0], time_range[1]))
+        
+        # Wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            longitude=((ds.longitude + 180) % 360) - 180
+        ).sortby("longitude")
+        
         return ds
     
     def _fetch_data_monthly_averaged_gpd(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
@@ -371,13 +377,23 @@ class CDSClient():
             combine="by_coords"
         )
         
-        t = ds.valid_time
-
-        mask = np.logical_or.reduce([
-            (t >= start) & (t <= end)
+        # Wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            longitude=((ds.longitude + 180) % 360) - 180
+        ).sortby("longitude")
+        
+        time_ranges64 = [
+            (np.datetime64(start, "ns"), np.datetime64(end, "ns"))
             for start, end in time_ranges
-        ])
+        ]
+        
+        t = ds.coords["valid_time"]
 
+        mask = xr.zeros_like(t, dtype=bool)
+
+        for start, end in time_ranges64:
+            mask |= (t >= start) & (t <= end)
+        
         ds_sel = ds.where(mask, drop=True)
         
         return ds_sel
@@ -508,13 +524,23 @@ class CDSClient():
             combine="by_coords"
         )
         
-        t = ds.valid_time
-
-        mask = np.logical_or.reduce([
-            (t >= start) & (t <= end)
+        # Wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            longitude=((ds.longitude + 180) % 360) - 180
+        ).sortby("longitude")
+        
+        time_ranges64 = [
+            (np.datetime64(start, "ns"), np.datetime64(end, "ns"))
             for start, end in time_ranges
-        ])
+        ]
+        
+        t = ds.coords["valid_time"]
 
+        mask = xr.zeros_like(t, dtype=bool)
+
+        for start, end in time_ranges64:
+            mask |= (t >= start) & (t <= end)
+        
         ds_sel = ds.where(mask, drop=True)
         
         return ds_sel
@@ -578,6 +604,11 @@ class CDSClient():
     def fetch_cmip6_xr(self, variable: Variable.CMIP6, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> xr.Dataset:
         file = self._fetch_data_cmip6_netcdf(variable, model, bbox, time_range, experiment, temporal_resolution)
         ds = xr.open_dataset(file)
+        # Wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            longitude=((ds.longitude + 180) % 360) - 180
+        ).sortby("longitude")
+        
         # Convert filter time range to approriate calender
         xr_time_start = Utils.datetime_to_xr_time(time_range[0], ds)
         xr_time_end = Utils.datetime_to_xr_time(time_range[1], ds)
@@ -608,6 +639,12 @@ class CDSClient():
     def fetch_monthly_single_levels_cmip5_xr(self, experiment:str, variable: Variable.CMIP5Monthly, model: str, ensemble_member: str, period: str) -> xr.Dataset:
         file = self.fetch_monthly_single_levels_cmip5_netcdf(experiment, variable, model, ensemble_member, period)
         ds = xr.open_dataset(file)
+        
+        # Wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            lon=((ds.lon + 180) % 360) - 180
+        ).sortby("lon")
+                
         return ds
     
     def fetch_monthly_single_levels_cmip5_netcdf(self, experiment:str, variable: Variable.CMIP5Monthly, model: str, ensemble_member: str, period: str) -> str:
@@ -620,18 +657,35 @@ class CDSClient():
             "period": [period]
         }
         
-        return self._execute_cds_request(dataset, request)
+        zip_file_path = self._execute_cds_request(dataset, request)
+        temp_dir = tempfile.gettempdir()
+        req_hash = sha256(str(request).encode('utf-8')).hexdigest()
+        temp_file_path = os.path.join(temp_dir, f"cds_cmip5_{req_hash}.nc")
+        # If file exists, remove it
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        # extract netcdf from zip and copy to temp_file_path
+        with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+            # find the netcdf file in the extracted files
+            for file_name in zip_ref.namelist():
+                if file_name.endswith('.nc'):
+                    extracted_path = os.path.join(temp_dir, file_name)
+                    os.rename(extracted_path, temp_file_path)
+                    break
+        
+        return temp_file_path
     
     def _execute_cds_request(self, dataset: str, request: dict, no_cache: bool = False) -> str:
         """
-        Execute a CDS API request and return the path to the downloaded NetCDF file.
+        Execute a CDS API request and return the path to the downloaded file.
         Args:
             dataset (str): _dataset name in CDS
             request (dict): _request parameters for CDS
             no_cache (bool, optional): If True, force re-download even if cached file exists. Defaults to False.
 
         Returns:
-            str: Path to the downloaded NetCDF file.
+            str: Path to the downloaded file.
         """
         hashable_request = str(request) + "=>" + dataset
         request_hash = sha256(hashable_request.encode('utf-8')).hexdigest()

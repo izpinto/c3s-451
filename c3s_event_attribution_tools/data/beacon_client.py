@@ -91,6 +91,12 @@ class BeaconClient():
         query = self.fetch_from_era5_daily_single_levels_query(bbox, time_range, variable)
 
         ds = query.to_xarray_dataset(dimension_columns=['longitude','latitude','valid_time'], force=True)
+        
+        # wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            longitude=((ds.longitude + 180) % 360) - 180
+        ).sortby("longitude")
+        
         return ds    
 
     def fetch_from_era5_daily_single_levels_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str) -> gpd.GeoDataFrame:
@@ -120,7 +126,8 @@ class BeaconClient():
         
         if df.empty:
             return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time', variable], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
-
+        # Wrap longitude to -180 to 180
+        df['longitude'] = ((df['longitude'] + 180) % 360)
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
 
     def fetch_from_era5_daily_pressure_levels_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, levels: list[int]) -> gpd.GeoDataFrame:
@@ -138,6 +145,8 @@ class BeaconClient():
         df = query.to_pandas_dataframe()
         if df.empty:
             return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time', variable, 'pressure_level'], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
+        # Wrap longitude to -180 to 180
+        df['longitude'] = ((df['longitude'] + 180) % 360)
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
     
     def fetch_from_era5_daily_pressure_levels_xr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, levels: list[int]) -> xr.Dataset:
@@ -153,4 +162,10 @@ class BeaconClient():
                 .add_range_filter('valid_time', gt_eq=time_range[0], lt_eq=time_range[1]))
         
         ds = query.to_xarray_dataset(dimension_columns=['longitude','latitude','pressure_level','valid_time'], force=True)
+        
+        # wrap longitude to -180 to 180
+        ds = ds.assign_coords(
+            longitude=((ds.longitude + 180) % 360) - 180
+        ).sortby("longitude")
+        
         return ds
