@@ -1,7 +1,7 @@
 import os
 from cdsapi import Client
 from datetime import datetime, timedelta
-from .variable import Variable
+from .variable import TempVariable
 from ..utils import Utils
 import geopandas as gpd
 import pandas as pd
@@ -72,44 +72,6 @@ class CDSClient():
             "area": [bbox[3], bbox[0], bbox[1], bbox[2]],  # CDS expects [north, west, south, east]
         }
         return request
-    
-    def _fetch_data_monthly_netcdf(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> str:
-        """
-        Fetch monthly averaged ERA5 data and save it as a temporary NetCDF file.
-
-        This method constructs a request for the ERA5 monthly means dataset, 
-        retrieves the data via the CDS client, and stores it in a temporary 
-        file on disk.
-
-        Parameters:
-            variable (str):
-                The name of the variable to fetch from the dataset.
-            bbox (tuple[float, float, float, float]):
-                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
-            time_range (tuple[datetime, datetime]):
-                A tuple containing the (start_date, end_date) for the data request.
-
-        Returns:
-            str: The file path to the downloaded temporary NetCDF file.
-        """
-
-        dataset = "reanalysis-era5-single-levels-monthly-means"
-        
-        req = self._build_request_monthly_averaged(variable, time_range, bbox)
-        
-        request_hash = sha256(str(req).encode('utf-8')).hexdigest()
-        # Fetch the temporary directory of the OS
-        temp_dir = tempfile.gettempdir()
-        temp_file_path = os.path.join(temp_dir, f"cds_{request_hash}.nc")
-        
-        # Check if file already exists to avoid re-downloading
-        if not os.path.exists(temp_file_path):
-            self.cds_client.retrieve(
-                    dataset,
-                    req
-                ).download(target=temp_file_path)
-        
-        return temp_file_path
         
     def _fetch_data_monthly_averaged_xr(self, variable: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> xr.Dataset:
         """
@@ -130,7 +92,9 @@ class CDSClient():
         Returns:
             xr.Dataset: An xarray Dataset containing the fetched monthly averaged data.
         """
-        file = self._fetch_data_monthly_netcdf(variable, bbox, time_range)
+        dataset = "reanalysis-era5-single-levels-monthly-means"
+        request = self._build_request_monthly_averaged(variable, time_range, bbox)
+        file = self._execute_cds_request(dataset, request)
         ds = xr.open_dataset(file)
         # filter time to exact range
         ds = ds.sel(valid_time=slice(time_range[0], time_range[1]))
@@ -156,9 +120,7 @@ class CDSClient():
             gpd.GeoDataFrame: A GeoDataFrame containing the monthly averaged data 
             with spatial and temporal information.
         """
-        file = self._fetch_data_monthly_netcdf(variable, bbox, time_range)
-        # open dataset
-        ds = xr.open_dataset(file)
+        ds = self._fetch_data_monthly_averaged_xr(variable, bbox, time_range)
         # convert entire dataset to DataFrame
         df = ds.to_dataframe().reset_index()
         # create geometry
@@ -280,7 +242,7 @@ class CDSClient():
     def _fetch_data_pressure_levels(
         self,
         dataset: str,
-        variable: Variable,
+        variable: TempVariable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
@@ -312,19 +274,15 @@ class CDSClient():
         files = []
         for start_dt, end_dt in ranges:
             req = self._build_request_pressure_levels([variable.cds_name()], bbox, (start_dt, end_dt), levels, daily_statistic=variable.cds_daily_statistic())
-            with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
-                self.cds_client.retrieve(
-                    dataset,
-                    req
-                ).download(target=tmp.name)
-                files.append(tmp.name)
+            file = self._execute_cds_request(dataset, req)
+            files.append(file)
 
         return files
     
     def fetch_data_pressure_levels_gpd(
         self,
         dataset: str,
-        variable: Variable,
+        variable: TempVariable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
@@ -354,37 +312,24 @@ class CDSClient():
             gpd.GeoDataFrame: A GeoDataFrame containing the pressure level data 
             with spatial coordinates, pressure levels, and temporal information.
         """
-        files = self._fetch_data_pressure_levels(
+        ds = self.fetch_data_pressure_levels_xr(
             dataset,
             variable,
             bbox,
             time_range,
             levels,
         )
-        
-        gdfs = []
-        for file in files:
-            # open dataset
-            ds = xr.open_dataset(file)
-            # convert entire dataset to DataFrame
-            df = ds.to_dataframe().reset_index()
-            # create geometry
-            df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
-            gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
-            gdfs.append(gdf)
-        
-        combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
-        
-        # filter time to exact range
-        min_start, max_end = time_range
-        combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= min_start) & (combined_gdf['valid_time'] <= max_end)]
-
-        return combined_gdf
+        # convert entire dataset to DataFrame
+        df = ds.to_dataframe().reset_index()
+        # create geometry
+        df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+        gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+        return gdf
     
     def fetch_data_pressure_levels_xr(
         self,
         dataset: str,
-        variable: Variable,
+        variable: TempVariable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
         levels: list[int],
@@ -439,81 +384,12 @@ class CDSClient():
         
         return ds
     
-    def fetch_data_pressure_levels_iris(
-        self,
-        dataset: str,
-        variable: Variable,
-        bbox: tuple[float, float, float, float],
-        time_range: tuple[datetime, datetime],
-        levels: list[int],
-    ) -> xr.Dataset:
-        """
-        Fetch pressure level data and return it as an Iris cube.
-
-        This method retrieves atmospheric data for specified pressure levels, 
-        merges multi-year files into a unified dataset, and converts the 
-        final result into an Iris cube. Note that this functionality is 
-        restricted to Linux environments due to Iris library dependencies.
-
-        Parameters:
-            dataset (str):
-                The name of the CDS dataset to query.
-            variable (Variable):
-                An instance of the Variable class containing CDS-specific naming 
-                and statistic metadata.
-            bbox (tuple[float, float, float, float]):
-                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
-            time_range (tuple[datetime, datetime]):
-                The full temporal range (start, end) for which to fetch data.
-            levels (list[int]):
-                A list of pressure levels (in hPa) to retrieve.
-
-        Returns:
-            iris.cube.Cube: An Iris cube containing the combined and 
-            time-filtered pressure level data.
-
-        Raises:
-            RuntimeError: If the method is called on a non-Linux platform.
-        """
-        if __import__('sys').platform not in ['linux']:
-            raise RuntimeError("Iris cubes is only supported on Linux platforms.")
-        
-        files = self._fetch_data_pressure_levels(
-            dataset,
-            variable,
-            bbox,
-            time_range,
-            levels,
-        )
-        
-        dss = []
-        for file in files:
-            # open dataset
-            ds = xr.open_dataset(file)
-            # convert entire dataset to DataFrame
-            dss.append(ds)
-        
-        ds = xr.open_mfdataset(
-            files,
-            combine="by_coords"
-        )
-        
-        # filter time to exact range
-        ds = ds.sel(valid_time=slice(time_range[0], time_range[1]))
-        
-        # Write the netcdf to local path and open
-        with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
-            ds.to_netcdf(tmp.name)
-            iris_cube = iris.iris.load_cube(tmp.name) # type: ignore # we have checked platform above
-            return iris_cube
-
     def _fetch_data_single_levels(
         self,
         dataset: str,
-        variable: Variable,
+        variable: TempVariable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
-        months: list[int]|None = None
     ) -> list[str]:
         """
         Fetch data from the CDS API for single-level variables, splitting by year or months.
@@ -540,30 +416,20 @@ class CDSClient():
         Returns:
             list[str]: A list of file paths to the downloaded temporary NetCDF files.
         """
-        ranges = None
-        if months is not None:
-            ranges = Utils.split_time_range_by_year_and_months(time_range[0], time_range[1], months)  
-            
-        else:
-            ranges = Utils.split_time_range_by_year(*time_range)
+        ranges = Utils.split_time_range_by_year(*time_range)
 
         files = []
         for start_dt, end_dt in ranges:
             req = self._build_request_single_levels([variable.cds_name()], bbox, (start_dt, end_dt), daily_statistic=variable.cds_daily_statistic())
-            with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
-                self.cds_client.retrieve(
-                    dataset,
-                    req
-                ).download(target=tmp.name)
-
-                files.append(tmp.name)
+            file = self._execute_cds_request(dataset, req)
+            files.append(file)
                 
         return files
     
     def fetch_data_single_levels_gpd(
         self,
         dataset: str,
-        variable: Variable,
+        variable: TempVariable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
     ) -> gpd.GeoDataFrame:
@@ -590,35 +456,24 @@ class CDSClient():
             gpd.GeoDataFrame: A GeoDataFrame containing the single-level data 
             with spatial coordinates and temporal information.
         """
-        files = self._fetch_data_single_levels(
+        ds = self.fetch_data_single_levels_xr(
             dataset,
             variable,
             bbox,
             time_range,
         )
-        min_start, max_end = time_range
-        gdfs = []
-        for file in files:
-            # open dataset
-            ds = xr.open_dataset(file)
-            # convert entire dataset to DataFrame
-            df = ds.to_dataframe().reset_index()
-            # create geometry
-            df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
-            gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
-            gdfs.append(gdf)
-        
-        combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs='EPSG:4326')
-        
-        # filter on given time range instead of taking the entire month
-        combined_gdf = combined_gdf[(combined_gdf['valid_time'] >= min_start) & (combined_gdf['valid_time'] <= max_end)]
-        
-        return combined_gdf
+        # convert entire dataset to DataFrame
+        df = ds.to_dataframe().reset_index()
+        # create geometry
+        df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+        gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+
+        return gdf
     
     def fetch_data_single_levels_xr(
         self,
         dataset: str,
-        variable: Variable,
+        variable: TempVariable,
         bbox: tuple[float, float, float, float],
         time_range: tuple[datetime, datetime],
     ) -> xr.Dataset:
@@ -668,71 +523,6 @@ class CDSClient():
         ds = ds.sel(valid_time=slice(time_range[0], time_range[1]))
         
         return ds
-    
-    def fetch_data_single_levels_iris(
-        self,
-        dataset: str,
-        variable: Variable,
-        bbox: tuple[float, float, float, float],
-        time_range: tuple[datetime, datetime],
-    ) -> xr.Dataset:
-        """
-        Fetch single-level data and return it as an Iris cube.
-
-        This method retrieves atmospheric data for specified single-level variables, 
-        merges multi-year files into a unified dataset, and converts the 
-        final result into an Iris cube via a temporary NetCDF file. Note that 
-        this functionality is restricted to Linux environments due to Iris 
-        library dependencies.
-
-        Parameters:
-            dataset (str):
-                The name of the CDS dataset to query.
-            variable (Variable):
-                An instance of the Variable class containing CDS-specific naming 
-                and statistic metadata.
-            bbox (tuple[float, float, float, float]):
-                Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
-            time_range (tuple[datetime, datetime]):
-                The full temporal range (start, end) for which to fetch data.
-
-        Returns:
-            iris.cube.Cube: An Iris cube containing the combined and 
-            time-filtered single-level data.
-
-        Raises:
-            RuntimeError: If the method is called on a non-Linux platform.
-        """
-        if __import__('sys').platform not in ['linux']:
-            raise RuntimeError("Iris cubes is only supported on Linux platforms.")
-        
-        files = self._fetch_data_single_levels(
-            dataset,
-            variable,
-            bbox,
-            time_range,
-        )
-        
-        dss = []
-        for file in files:
-            # open dataset
-            ds = xr.open_dataset(file)
-            # convert entire dataset to DataFrame
-            dss.append(ds)
-        
-        ds = xr.open_mfdataset(
-            files,
-            combine="by_coords"
-        )
-        
-        # filter on given time range instead of taking the entire month
-        ds = ds.sel(valid_time=slice(time_range[0], time_range[1]))
-        
-        # Write the netcdf to local path and open
-        with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as tmp:
-            ds.to_netcdf(tmp.name)
-            iris_cube = iris.iris.load_cube(tmp.name) # type: ignore # we have checked platform above
-            return iris_cube      
 
     def _build_request_cmip6(self, variable: str, model:str, time_range: tuple[datetime, datetime], bbox: tuple[float, float, float, float], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> dict:
         start_dt, end_dt = time_range
@@ -809,3 +599,59 @@ class CDSClient():
         df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
         gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
         return gdf
+    
+    def fetch_monthly_single_levels_cmip5_gpd(self, experiment:str, variable: str, model: str, ensemble_member: str, period: str) -> gpd.GeoDataFrame:
+        file = self.fetch_monthly_single_levels_cmip5_netcdf(experiment, variable, model, ensemble_member, period)
+        ds = xr.open_dataset(file)
+        # convert entire dataset to DataFrame
+        df = ds.to_dataframe().reset_index()
+        # create geometry
+        df['geometry'] = gpd.points_from_xy(df['longitude'], df['latitude'])
+        gdf = gpd.GeoDataFrame(df, geometry='geometry', crs='EPSG:4326')
+        return gdf
+    
+    def fetch_monthly_single_levels_cmip5_xr(self, experiment:str, variable: str, model: str, ensemble_member: str, period: str) -> xr.Dataset:
+        file = self.fetch_monthly_single_levels_cmip5_netcdf(experiment, variable, model, ensemble_member, period)
+        ds = xr.open_dataset(file)
+        return ds
+    
+    def fetch_monthly_single_levels_cmip5_netcdf(self, experiment:str, variable: str, model: str, ensemble_member: str, period: str) -> str:
+        dataset = "projections-cmip5-monthly-single-levels"
+        request = {
+            "experiment": experiment,
+            "variable": [variable],
+            "model": model,
+            "ensemble_member": ensemble_member,
+            "period": [period]
+        }
+        
+        return self._execute_cds_request(dataset, request)
+    
+    def _execute_cds_request(self, dataset: str, request: dict, no_cache: bool = False) -> str:
+        """
+        Execute a CDS API request and return the path to the downloaded NetCDF file.
+        Args:
+            dataset (str): _dataset name in CDS
+            request (dict): _request parameters for CDS
+            no_cache (bool, optional): If True, force re-download even if cached file exists. Defaults to False.
+
+        Returns:
+            str: Path to the downloaded NetCDF file.
+        """
+        hashable_request = str(request) + "=>" + dataset
+        request_hash = sha256(hashable_request.encode('utf-8')).hexdigest()
+        # Fetch the temporary directory of the OS
+        temp_dir = tempfile.gettempdir()
+        temp_file_path = os.path.join(temp_dir, f"cds_request_{request_hash}.nc")
+        
+        # Check if file already exists to avoid re-downloading
+        if not os.path.exists(temp_file_path) or no_cache:
+            print(f"Downloading data from CDS for '{dataset}', this may take a while...")
+            self.cds_client.retrieve(
+                    dataset,
+                    request
+                ).download(target=temp_file_path)
+        else:
+            print(f"Using locally cached data from CDS for '{dataset}'.")
+        
+        return temp_file_path
