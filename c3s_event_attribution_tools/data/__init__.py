@@ -766,3 +766,122 @@ class DataClient():
         # Concatenate all Datasets
         ds['t2m'].values = Conversions.convert_temperature(ds['t2m'].values, from_unit, to_unit)
         return ds # type: ignore
+
+    def fetch_climate_scenarios(self,
+        analysis_type,
+        models, 
+        variable_name, 
+        bbox, 
+        hist_range=(datetime(1950, 1, 1), datetime(2005, 12, 31)),
+        fut_range=(datetime(2006, 1, 1), datetime(2100, 12, 31)),
+        temp_res="daily",
+        max_models=None
+    ):
+        """
+        Unified fetcher for CMIP6 and CORDEX data.
+        
+        Parameters:
+        - analysis_type: 'cmip6' or 'cordex'
+        - models: 
+            If 'cmip6': List of model names (strings).
+            If 'cordex': List of dictionaries containing {'hist_url', 'rcp85_url', 'driving_model'}.
+        """
+        
+        results_local = {}
+        results_gmst = {}
+        processed_count = 0
+
+        # Configuration based on Analysis Type
+        if analysis_type == 'cmip6':
+            exp_hist = "historical"
+            exp_fut  = "ssp585"
+            gmst_fetch_fn = self.fetch_cmip6_xr  # GMST comes from CMIP6
+            
+        elif analysis_type == 'cordex':
+            exp_hist = "historical"
+            exp_fut  = "rcp85"
+            gmst_fetch_fn = self.fetch_cmip6_xr  # GMST comes from CMIP5 (Driver)
+            
+        else:
+            raise ValueError("analysis_type must be 'cmip6' or 'cordex'")
+
+        print(f"\n--- Starting {analysis_type.upper()} Processing (Exp: {exp_fut}) ---")
+
+        # 2. Main Loop
+        for entry in models:
+            # Stop if max limit reached
+            if max_models and processed_count >= max_models:
+                break
+
+            # Determine Model Name and Driving Model (for GMST)
+            if analysis_type == 'cmip6':
+                model_id = entry # entry is just the string name
+                driving_model = entry
+            else:
+                # 
+                # Assuming the dictionary has a key 'driving_model' or 'model_name'
+                gcm = entry.get('gcm', 'UnknownGCM')
+                rcm = entry.get('rcm', 'UnknownRCM')
+                model_id = f"{gcm}_{rcm}"
+                driving_model = None
+                # try:
+                #     driving_model = entry.get('gcm', 'UnknownGCM') # This MUST match a valid CMIP5 model name
+
+                # except KeyError:
+                #     driving_model = None
+
+            try:
+                print(f"Processing: {model_id}...")
+
+                # Fetch Local Variable (The Study Data)
+                if analysis_type == 'cmip6':
+                    # CMIP6 Local Fetch
+                    ds_hist = self.fetch_cmip6_xr(
+                        variable=variable_name, model=model_id, bbox=bbox,
+                        time_range=hist_range, experiment=exp_hist, temporal_resolution=temp_res
+                    )
+                    ds_fut = self.fetch_cmip6_xr(
+                        variable=variable_name, model=model_id, bbox=bbox,
+                        time_range=fut_range, experiment=exp_fut, temporal_resolution=temp_res
+                    )
+                else:
+                    # CORDEX Local Fetch (via URL)
+                    ds_hist = self.fetch_cordex_xr(
+                        variable=variable_name, model_url=entry["hist_url"], bbox=bbox, time_range=hist_range
+                    )
+                    ds_fut = self.fetch_cordex_xr(
+                        variable=variable_name, model_url=entry["rcp85_url"], bbox=bbox, time_range=fut_range
+                    )
+
+                # Merge Local
+                local_merged = xr.concat([ds_hist, ds_fut], dim="time", combine_attrs="override")
+
+                # Fetch Global Mean Surface Temp (GMST)
+                if driving_model is not None:
+                    print(f"   -> Fetching GMST for {driving_model}...")
+                    gmst_hist = gmst_fetch_fn(
+                        variable='tas', model=driving_model, bbox=(-180, -90, 180, 90),
+                        time_range=hist_range, experiment="historical", temporal_resolution="monthly"
+                    )
+                    gmst_fut = gmst_fetch_fn(
+                        variable='tas', model=driving_model, bbox=(-180, -90, 180, 90),
+                        time_range=fut_range, experiment=exp_fut, temporal_resolution="monthly"
+                    )
+                    gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override")
+                else:
+                    print(f"   ⚠️ Skipping GMST: No driving model provided.")
+                    gmst_merged = None
+
+                # Store Results 
+                results_local[model_id] = local_merged
+                if gmst_merged is not None:
+                    results_gmst[model_id] = gmst_merged
+                
+                processed_count += 1
+                print(f"   ✅ Success: {model_id}")
+
+            except Exception as e:
+                print(f"   ❌ Failed {model_id}: {str(e)}")
+                continue
+
+        return results_local, results_gmst
