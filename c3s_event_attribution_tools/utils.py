@@ -866,7 +866,7 @@ class Utils:
         return "Bad", summary   
 
     @staticmethod
-    def extract_results(df, df_res, obs_sigma, obs_shape):
+    def extract_results(df, df_res, obs_sigma, obs_shape, obs_return_period, obs_event_magnitude):
         """ 
         Compare model validation results with observations and update the DataFrame.
         df: DataFrame to update (model hub)
@@ -900,11 +900,17 @@ class Utils:
                 df.loc[mask, 'sigma_validation'] = s_status
                 df.loc[mask, 'shape_validation'] = x_status
                 df.loc[mask, 'validation_summary'] = f"{s_sum}; {x_sum}"
+
+                # Model Threshold is the 'rp_value' calculated during validation
+                model_threshold = r['rp_value']
+                
+                df.loc[mask, 'Magnitude (Obs / Validation)'] = f"{obs_event_magnitude:.2f} / {model_threshold:.2f}"
+                df.loc[mask, 'RP (Obs / Validation)'] = f"{obs_return_period:.1f} / {obs_return_period:.1f}"
                 
                 # Auto-Recommendation Logic
                 ranks = {"Good": 3, "Reasonable": 2, "Bad": 1}
                 score = min(ranks[s_status], ranks[x_status])
-                df.loc[mask, 'auto_recommendation'] = [k for k, v in ranks.items() if v == score][0]
+                df.loc[mask, 'Stat Fit'] = [k for k, v in ranks.items() if v == score][0]
 
             # B. Past Analysis (using 'attr_' columns)
             p_row = m_rows[m_rows['scenario'] == 'Past-Full']
@@ -912,6 +918,13 @@ class Utils:
                 r = p_row.iloc[0]
                 df.loc[mask, 'Past_PR'] = fmt(r, 'attr', 'PR')
                 df.loc[mask, 'Past_dI'] = fmt(r, 'attr', 'dI-abs')
+            
+            if p_row.empty:
+                p_row = m_rows[m_rows['scenario'] == 'Validation']
+                if not p_row.empty:
+                    r = p_row.iloc[0]
+                    df.loc[mask, 'Past_PR'] = fmt(r, 'attr', 'PR')
+                    df.loc[mask, 'Past_dI'] = fmt(r, 'attr', 'dI-abs')
 
             # C. Future Projections (using 'proj_' columns)
             f20_row = m_rows[m_rows['scenario'] == 'Future-2.0']
@@ -927,11 +940,10 @@ class Utils:
                 df.loc[mask, 'Fut_2.6_dI'] = fmt(r, 'proj', 'dI-abs') 
 
     @staticmethod
-    def create_decision_hub(df_validation, step='full', ensemble_filter='all'):
+    def create_decision_hub(df_validation, step='full', ensemble_filter='all', save_path=None):
         """
         Creates an interactive table for Model Validation.
-        step: 'seasonal', 'spatial', or 'full'
-        ensemble_filter: 'all', 'cmip6', or 'cordex'
+        save_path: path to the CSV file to persist choices to disk.
         """
 
         df_filtered = df_validation.copy()
@@ -941,45 +953,54 @@ class Utils:
         rows = []
         decision_widgets = {}
 
-        # Define Column Widths
-        w_model, w_ens = '150px', '80px'
-        w_val = '100px'   # For Seasonal/Spatial/Auto-Rec
-        w_res = '130px'   # For PR/dI results
-        w_drop = '100px'  # For Include Y/N
-        w_obs = '250px'   # For Observations
+        # Column Widths
+        w_model, w_ens, w_val, w_res, w_drop, w_obs = '180px', '80px', '100px', '130px', '100px', '250px'
 
         # Build Header
-        header_list = [
-            widgets.Label('Model', layout={'width': w_model}),
-            widgets.Label('Ens', layout={'width': w_ens})
-        ]
+        header_list = [widgets.Label('Model', layout={'width': w_model}), widgets.Label('Ens', layout={'width': w_ens})]
 
         if step == 'full':
             header_list += [
-                widgets.Label('Seasonal', layout={'width': w_val}),
-                widgets.Label('Spatial', layout={'width': w_val}),
-                widgets.Label('Auto-Rec', layout={'width': w_val}),
-                widgets.Label('Past PR/dI', layout={'width': w_res}),
-                widgets.Label('Fut 2.0 PR/dI', layout={'width': w_res}),
-                widgets.Label('Fut 2.6 PR/dI', layout={'width': w_res}),
-                widgets.Label('Include?', layout={'width': w_drop}),
-                widgets.Label('Observations', layout={'width': w_obs})
+                widgets.Label('Seasonal', layout={'width': w_val}), widgets.Label('Spatial', layout={'width': w_val}),
+                widgets.Label('Stat Fit', layout={'width': w_val}), widgets.Label('Past PR/dI', layout={'width': w_res}),
+                widgets.Label('Fut 2.0 PR/dI', layout={'width': w_res}), widgets.Label('Fut 2.6 PR/dI', layout={'width': w_res}),
+                widgets.Label('Include?', layout={'width': w_drop}), widgets.Label('Comments', layout={'width': w_obs})
             ]
         elif step == 'statistics':
-            header_list += [widgets.Label('Σ', layout={'width': '80px'}), widgets.Label('ξ', layout={'width': '80px'}), widgets.Label('Summary', layout={'width': '400px'})]
+            header_list += [
+                widgets.Label('Σ', layout={'width': '80px'}), widgets.Label('ξ', layout={'width': '80px'}),
+                widgets.Label('Summary', layout={'width': '300px'}), widgets.Label('Mag (Obs/Val)', layout={'width': '100px'}),
+                widgets.Label('Include?', layout={'width': w_drop}), widgets.Label('Comments', layout={'width': w_obs})
+            ]
         else:
-            # For 'seasonal' or 'spatial' steps
-            header_list.append(widgets.Label(f"{step.capitalize()} Score", layout={'width': '120px'}))
-
+            header_list.extend([
+                widgets.Label(f"{step.capitalize()} Score", layout={'width': '120px'}),
+                widgets.Label('Include?', layout={'width': w_drop}), 
+                widgets.Label('Comments', layout={'width': w_obs})
+            ])
         header = widgets.HBox(header_list, layout={'background_color': '#f0f0f0', 'margin': '5px 0px'})
         
-        # Build Rows
         for idx, row in df_filtered.iterrows():
-            line_items = [
-                widgets.Label(row['model'], layout={'width': w_model}),
-                widgets.Label(row['ensemble'], layout={'width': w_ens})
-            ]
+            line_items = [widgets.Label(row['model'], layout={'width': w_model}), widgets.Label(row['ensemble'], layout={'width': w_ens})]
             decision_widgets[row['model']] = {}
+
+            # Check if we already have a value, otherwise use default
+            current_inc = row.get('Include T/F')
+            current_obs = row.get('Comments', '')
+            
+            # Logic for default "Include" if nothing is saved yet
+            if step == 'statistics':
+                default_inc = True if row['sigma_validation'] != 'Bad' and row['shape_validation'] != 'Bad' else False
+            else:
+                default_inc = True if row['Stat Fit'] != 'Bad' else False
+
+            # Define widgets with existing values if they exist
+            inc_drop = widgets.Dropdown(
+                options=[True, False], 
+                value=current_inc if pd.notna(current_inc) and current_inc in [True, False] else default_inc, 
+                layout={'width': w_drop}
+            )
+            obs_text = widgets.Text(value=str(current_obs) if pd.notna(current_obs) else "", layout={'width': w_obs})
 
             if step == 'statistics':
                 for p in ['sigma_validation', 'shape_validation']:
@@ -987,40 +1008,22 @@ class Utils:
                     color = 'green' if val == 'Good' else 'orange' if val == 'Reasonable' else 'red'
                     line_items.append(widgets.HTML(f"<b style='color:{color}'>{val}</b>", layout={'width': '80px'}))
                 
-                summary_text = str(row.get('validation_summary', ''))
-                line_items.append(widgets.HTML(f"<small>{summary_text}</small>", layout={'width': '450px'}))
+                line_items.append(widgets.HTML(f"<small>{row.get('validation_summary', '')}</small>", layout={'width': '300px'}))
+                line_items.append(widgets.HTML(f"<small>{row.get('Magnitude (Obs / Validation)', 'N/A')}</small>", layout={'width': '100px'}))
+                line_items.extend([inc_drop, obs_text])
 
-            if step == 'full':
-                # Read-Only Validation Results
-                for col in ['Seasonal cycle', 'Spatial maps', 'auto_recommendation']:
+            elif step == 'full':
+                for col in ['Seasonal cycle', 'Spatial maps', 'Stat Fit']:
                     val = str(row.get(col, 'Pending'))
                     color = 'green' if val == 'Good' else 'orange' if val == 'Reasonable' else 'red'
                     line_items.append(widgets.HTML(f"<b style='color:{color}'>{val}</b>", layout={'width': w_val}))
 
-                # Read-Only Scientific Results
-                # Combines PR and dI into one block for space
                 for prefix in ['Past', 'Fut_2.0', 'Fut_2.6']:
-                    pr = row.get(f'{prefix}_PR', 'N/A')
-                    di = row.get(f'{prefix}_dI', 'N/A')
-                    line_items.append(widgets.HTML(f"<small>PR: {pr}<br>dI: {di}</small>", layout={'width': w_res}))
-
-                # Interactive Decision Columns
-                inc_val = row.get('Include Y/N')
-                # Default logic: Y if not "Bad", else N
-                default_inc = 'Y' if row['auto_recommendation'] != 'Bad' else 'N'
-                inc_drop = widgets.Dropdown(
-                    options=['Y', 'N', 'Just'], 
-                    value=inc_val if inc_val in ['Y', 'N', 'Just'] else default_inc, 
-                    layout={'width': w_drop}
-                )
-                obs_text = widgets.Text(value=str(row.get('Observations', '')), layout={'width': w_obs})
+                    line_items.append(widgets.HTML(f"<small>PR: {row.get(f'{prefix}_PR', 'N/A')}<br>dI: {row.get(f'{prefix}_dI', 'N/A')}</small>", layout={'width': w_res}))
                 
                 line_items.extend([inc_drop, obs_text])
-                decision_widgets[row['model']]['include'] = inc_drop
-                decision_widgets[row['model']]['obs'] = obs_text
 
             elif step in ['seasonal', 'spatial']:
-                # Standard dropdown view for specific steps
                 col_name = 'Seasonal cycle' if step == 'seasonal' else 'Spatial maps'
                 current_val = row.get(col_name)
                 s_val = current_val if current_val in ['Good', 'Reasonable', 'Bad'] else 'Reasonable'
@@ -1028,9 +1031,12 @@ class Utils:
                 line_items.append(drop)
                 decision_widgets[row['model']][step] = drop
 
+                line_items.extend([inc_drop, obs_text])
+
+            decision_widgets[row['model']]['include'] = inc_drop
+            decision_widgets[row['model']]['obs'] = obs_text
             rows.append(widgets.HBox(line_items))
         
-        # Save Logic
         save_button = widgets.Button(description=f"💾 Save {step.capitalize()}", button_style='success')
         output = widgets.Output()
         
@@ -1038,21 +1044,21 @@ class Utils:
             with output:
                 clear_output()
                 for model, w in decision_widgets.items():
-                    if 'seasonal' in w: df_validation.loc[df_validation['model'] == model, 'Seasonal cycle'] = w['seasonal'].value
-                    if 'spatial' in w: df_validation.loc[df_validation['model'] == model, 'Spatial maps'] = w['spatial'].value
-                    if 'include' in w: df_validation.loc[df_validation['model'] == model, 'Include Y/N'] = w['include'].value
-                    if 'obs' in w: df_validation.loc[df_validation['model'] == model, 'Observations'] = w['obs'].value
-                print(f"✅ Changes to {step} saved to DataFrame.")
+                    mask = df_validation['model'] == model
+                    if 'seasonal' in w: df_validation.loc[mask, 'Seasonal cycle'] = w['seasonal'].value
+                    if 'spatial' in w: df_validation.loc[mask, 'Spatial maps'] = w['spatial'].value
+                    if 'include' in w: df_validation.loc[mask, 'Include T/F'] = w['include'].value
+                    if 'obs' in w: df_validation.loc[mask, 'Comments'] = w['obs'].value
+                
+                # PERSISTENCE TO DISK
+                if save_path:
+                    df_validation.to_csv(save_path, index=False)
+                    print(f"✅ Changes saved to memory AND disk: {save_path}")
+                else:
+                    print(f"✅ Changes saved to memory")
 
         save_button.on_click(on_save_clicked)
-
-        display(widgets.VBox([
-            widgets.HTML(f"<h3>Step 4: {step.capitalize()} Validation Hub</h3>"),
-            header, 
-            widgets.VBox(rows), 
-            save_button if step != 'statistics' else widgets.Label(""), 
-            output
-        ]))
+        display(widgets.VBox([widgets.HTML(f"<h3>Step 4: {step.capitalize()} Validation Hub</h3>"), header, widgets.VBox(rows), save_button, output]))
 
     
     @staticmethod
@@ -1111,3 +1117,79 @@ class Utils:
                         "colour" : "MediumSeaGreen",
                         "long_name" : "Middle East / North Africa"},
     }
+
+    @staticmethod
+    def get_gcm_cordex_to_cmip5():
+        """
+        Returns a nested mapping: CORDEX_GCM_Name -> Driving_Model & Ensembles.
+        Each ensemble contains the specific periods for Historical and RCP8.5.
+        """
+        return {
+            'cccma_canesm2': {
+                'driving_model': "canesm2",
+                'ensembles': {
+                    'r1i1p1': {
+                        'historical': ["185001-200512"],
+                        'rcp_8_5': ["200601-210012"]
+                    }
+                }
+            },
+            'cnrm_cerfacs_cm5': {
+                'driving_model': "cnrm_cm5",
+                'ensembles': {
+                    'r1i1p1': {
+                        'historical': ["185001-189912", "190001-194912", "195001-200512"],
+                        'rcp_8_5': ["200601-205512", "205601-210012"]
+                    }
+                }
+            },
+            'ichec_ec_earth': {
+                'driving_model': "ec_earth",
+                'ensembles': {
+                    'r12i1p1': {
+                        'historical': ["185001-189912", "190001-194912", "195001-201212"],
+                        'rcp_8_5': ["200601-210012"]
+                    }
+                }
+            },
+            'ipsl_cm5a_mr': {
+                'driving_model': "ipsl_cm5a_mr",
+                'ensembles': {
+                    'r1i1p1': {
+                        'historical': ["185001-200512"],
+                        'rcp_8_5': ["200601-210012"]
+                    }
+                }
+            },
+            'mohc_hadgem2_es': {
+                'driving_model': "hadgem2_es",
+                'ensembles': {
+                    'r1i1p1': {
+                        'historical': ["185912-188411", "188412-190911", "190912-193411", "193412-195911", "195912-198411", "198412-200511"],
+                        'rcp_8_5': ["200512-203011", "203012-205511", "205512-208011", "208012-210011"]
+                    }
+                }
+            },
+            'mpi_m_mpi_esm_lr': {
+                'driving_model': "mpi_esm_lr",
+                'ensembles': {
+                    'r1i1p1': {
+                        'historical': ["185001-200512"],
+                        'rcp_8_5': ["200601-210012"]
+                    },
+                    'r3i1p1': {
+                        'historical': ["185001-200512"],
+                        'rcp_8_5': ["200601-210012"]
+                    }
+                }
+            },
+            'ncc_noresm1_m': {
+                'driving_model': "noresm1_m",
+                'ensembles': {
+                    'r1i1p1': {
+                        'historical': ["185001-200512"],
+                        'rcp_8_5': ["200601-210012"]
+                    }
+                }
+            }
+        }

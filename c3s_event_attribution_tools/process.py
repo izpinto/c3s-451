@@ -1071,3 +1071,23 @@ class Process:
         }
             """
         r(r_code)
+
+    @staticmethod
+    def merge_model_gmst():
+        r_code = """
+        merge_model_gmst <- function(model_df, gmst_df) {
+            
+            # model_df has: time (POSIXct), value (tasmax)
+            # gmst_df has: year, gmst
+            # merge on year
+            out <- merge(
+                model_df[, c("year", "value")],
+                gmst_df,
+                by = "year",
+                all = FALSE
+            )
+            
+            return(out)
+        }
+        """
+        r(r_code)
