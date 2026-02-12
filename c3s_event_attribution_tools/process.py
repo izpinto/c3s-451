@@ -598,7 +598,7 @@ class Process:
         )
         gdf_weighted = Process.weighted_values(gdf_sub, value_col)
         ts_clim31d_studyregion = Process.calculate_mean(gdf_weighted, value_col=value_col, groupby_col=datetime_col)
-        plot_df, labels, labelticks = Process.get_seasonal_cycle_plot_values(
+        plot_df, labels, labelticks = Utils.get_seasonal_cycle_plot_values(
             ts_clim31d_studyregion, datetime_col=datetime_col, month_range=month_range
         )
         return ts_clim31d_studyregion, plot_df, labels, labelticks
