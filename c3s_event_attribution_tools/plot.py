@@ -1586,7 +1586,7 @@ class Plot:
     
     @staticmethod
     def plot_seasonal_cycles(seasonal_cycles, obs_seasonal_cycle, value_col:str,
-                          legend_title:str=None, cmap:str=None, add_logos:bool=True,
+                          legend_title:str=None, title:str=None, cmap:str=None, add_logos:bool=True,
                           projection:cartopy.crs=ccrs.PlateCarree(), dpi:int=100,
                           subtitle:bool=True):
 
@@ -1601,22 +1601,25 @@ class Plot:
             ax.plot(da.values, label="model")
             ax.plot(obs_seasonal_cycle[value_col].values, color="k", label="ERA5")
 
-            ax.set_title(model_name.replace("_", "-"), weight="medium", fontsize=18)
+            ax.set_title(model_name.replace("_", "-"), weight="medium", fontsize=16)
             ax.set_xticks(ticks)
             ax.set_xticklabels(labels)
+            if i % ncols == 0:
+                ax.set_ylabel(legend_title)
+
             ax.grid(alpha=0.1)
 
             for d in range(365):
                 if days[d].day == 1:
                     ax.axvline(d, color="k", alpha=0.05)
-
+            
             ax.legend()
 
         for j in range(i + 1, len(axs.flatten())):
             axs.flatten()[j].set_axis_off()
 
         if subtitle:
-            fig.suptitle(legend_title, y=1.2, fontsize=20, weight='medium')
+            fig.suptitle(title, y=1.2, fontsize=20, weight='medium')
 
         if add_logos:
             plt.close(fig)
@@ -1684,7 +1687,7 @@ class Plot:
                 cmap=cmap, norm=norm, transform=ccrs.PlateCarree()
             )
 
-            ax.set_title(name, fontsize=18, weight='medium')
+            ax.set_title(name, fontsize=16, weight='medium')
 
             # Standard features
             ax.coastlines()
@@ -1788,7 +1791,8 @@ class Plot:
         figsize: tuple = None,
         dpi: int = 100,
         add_logos: bool = True,
-        subtitle: bool = True
+        subtitle: bool = True,
+        yaxis_label: str = None,
     ):
         """
         Plots a grid comparing rolling window statistics of models vs observations with Confidence Intervals.
@@ -1856,6 +1860,9 @@ class Plot:
 
             # Formatting
             ax.set_title(model_name.replace("_", " "), weight='bold', fontsize=14)
+
+            if i % ncols == 0 and yaxis_label:
+                ax.set_ylabel(yaxis_label)
 
             # Only set xlabel on bottom row
             if i >= (nrows - 1) * ncols:
