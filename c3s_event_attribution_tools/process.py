@@ -1134,8 +1134,8 @@ class Process:
                 ts_regional = da.where(mask == 0, drop=True)
 
                 # Product B: Regional Time Series (Latitude Weighted)
-                ts_weighted = Process.weighted_values(ts_regional, value_col=None, lat_col='latitude')
-                ts_final = ts_weighted.mean([xdim, ydim]).sortby("time")
+                weights = Process.weighted_values(ts_regional, value_col=None, lat_col='latitude')
+                ts_final = ts_regional.weighted(weights).mean([xdim, ydim]).sortby("time")
 
                 # Product C: Seasonal Cycle
 
@@ -1185,8 +1185,8 @@ class Process:
                     doy = sc.dayofyear
                     sort_key = xr.where(doy < 32 * start_month, doy + 365, doy)
                     sc = sc.sortby(sort_key)
-                sc = Process.weighted_values(sc, value_col=None, lat_col='latitude')
-                sc = sc.mean([xdim, ydim])
+                weights_sc = Process.weighted_values(sc, value_col=None, lat_col='latitude')
+                sc = sc.weighted(weights_sc).mean([xdim, ydim])
 
                 # Store Results
 
@@ -1245,8 +1245,8 @@ class Process:
                 if "lon" in da.coords: da = da.rename({"lon": "longitude"})
 
                 # Spatial Average (Latitude Weighted)
-                gmst_monthly = Process.weighted_values(da, value_col=None, lat_col='latitude')
-                gmst_monthly = gmst_monthly.mean(["longitude", "latitude"]).sortby("time")
+                weights = Process.weighted_values(da, value_col=None, lat_col='latitude')
+                gmst_monthly = da.weighted(weights).mean(["longitude", "latitude"]).sortby("time")
 
                 # Temporal Aggregation (Annual)
                 gmst_yearly = gmst_monthly.groupby("time.year").mean().compute()
@@ -1282,6 +1282,63 @@ class Process:
                 print(f"ERROR: Failed to process GMST for {model_name}: {e}")
                 
         return results
+    
+    @staticmethod
+    def sliding_stat_by_dayofyear(data, pad=15, method='std', quantile_val=0.9):
+
+        """
+        Compute day-of-year-based sliding window statistics (mean, std, or quantile) across years.
+
+        Parameters:
+        -----------
+        data : xr.DataArray
+            3D DataArray with dimensions ('time', 'lat', 'lon')
+        pad : int
+            Number of days on either side to include in the window (default: 15 → 30-day window)
+        method : str
+            Statistic to compute: 'std', 'mean', or 'quantile'
+        quantile_val : float
+            Quantile to compute if method='quantile' (e.g., 0.9 for 90th percentile)
+
+        Returns:
+        --------
+        xr.DataArray
+            DataArray of shape (dayofyear, lat, lon) with the selected statistic
+            Each [d, :, :] slice contains the 30-day std around day d, computed across all years.
+        """
+
+        # Sanity check
+        if method not in ['std', 'mean', 'quantile']:
+            raise ValueError("method must be one of: 'std', 'mean', 'quantile'")
+
+        # Remove Feb 29 to standardize 365-day calendar
+        data = data.sel(valid_time=~((data.valid_time.dt.month == 2) & (data.valid_time.dt.day == 29)))
+
+        days = np.arange(1, 366)  # Days of year
+        dayofyear = data.valid_time.dt.dayofyear
+        result_list = []
+
+        for day in days:
+            # Build ±pad-day window (cyclically)
+            window_days = [(day + offset - 1) % 365 + 1 for offset in range(-pad, pad + 1)]
+            mask = dayofyear.isin(window_days)
+            window_data = data.sel(valid_time=mask)
+
+            # Compute selected statistic
+            if method == 'std':
+                stat = window_data.std(dim='valid_time')
+            elif method == 'mean':
+                stat = window_data.mean(dim='valid_time')
+            elif method == 'quantile':
+                stat = window_data.quantile(quantile_val, dim='valid_time')
+            
+            result_list.append(stat)
+
+        # Combine results
+        result = xr.concat(result_list, dim='dayofyear')
+        result = result.assign_coords(dayofyear=days)
+
+        return result
     
     @staticmethod
     def analyze_extreme_scenario():
