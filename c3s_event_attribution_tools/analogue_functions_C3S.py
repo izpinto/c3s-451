@@ -12,7 +12,7 @@ import calendar
 import numpy.ma as ma
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
-from datetime import datetime
+import datetime
 import warnings
 from shapely.geometry import Polygon
 import matplotlib
@@ -964,8 +964,46 @@ class Analogues:
             print("Error reading cubes for %s", var)
             raise FileNotFoundError
         iris.coord_categorisation.add_year(cube, 'time')
-        cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
+        cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell <= Y2))
         iris.coord_categorisation.add_month(cube, 'time')
+        cube = cube.extract(iris.Constraint(month=months))
+        return cube
+    
+    @staticmethod
+    def nc_to_cube(path:str) -> iris.cube.Cube:
+        '''
+        Load in NetCDF file to iris cube
+
+        Parameters:
+            path (str): Relative file location
+
+        Returns:
+            iris.cube.Cube: Loaded iris cube from NetCDF
+        '''
+
+        cubes = iris.load(path)
+        try:
+            cube = cubes[0]
+        except:
+            print("Error reading cubes for %s", path)
+            raise FileNotFoundError
+        return cube
+    
+    def extract_months(cube:iris.cube.Cube, months:list[str]) -> iris.cube.Cube:
+        '''
+        Extract months from cube
+
+        Parameters:
+            cube (iris.cube.Cube): Iris cube
+            months (list[str]): Three month abbreviations [previous, current, next] e.g. ['Feb', 'Mar', 'Apr']
+
+        Returns:
+            iris.cube.Cube: Extracted iris cube for selected months
+        '''
+
+        if not any(coord.long_name == 'month' for coord in cube.aux_coords):
+            iris.coord_categorisation.add_month(cube, 'time')
+
         cube = cube.extract(iris.Constraint(month=months))
         return cube
 
@@ -1278,6 +1316,46 @@ class Analogues:
         grid_areas = iris.analysis.cartography.area_weights(cube)
         cube.data = ma.masked_invalid(cube.data)
         return cube.collapsed(('longitude','latitude'),iris.analysis.MEAN,weights=grid_areas).data
+
+    # Processing
+    ######################################################################################
+
+    @staticmethod
+    def blue_red_ratio(z_data:iris.cube.Cube, correlation_field:np.ndarray, domain:list[float]) -> tuple[float, float]:
+        '''
+        Calculate the blue/red ratio for a given correlation field and domain
+
+        Parameters:
+            z_data (iris.cube.Cube):
+                Anomaly cube of the correlation variable with the spatial mean
+                removed at each time step.
+            correlation_field (np.ndarray):
+                Spatial field of Pearson correlation coefficients between the event
+                time series and each grid point of the correlation cube.
+            domain (list[float]):
+                Domain to subset the data on    
+
+        Returns:
+            blue, red (tuple[float, float]):
+                Blue/red ratio and the percentage of significant grid points in the domain
+        '''
+
+        X = z_data[0,:,:] 
+        X.data = correlation_field
+        Y = Analogues.extract_region(X, domain)
+
+        a,b = np.shape(Y.data)
+        blue = 0
+        red = 0
+        for i in np.arange(a):
+            for j in np.arange(b):
+                if Y.data[i,j] < 0:
+                    blue +=1
+                else:
+                    red +=1
+        
+        return (blue, red)
+
 
 
     # Plotting
@@ -1643,7 +1721,6 @@ class Analogues:
 
             if var == ana_var:
                 event_cube = event_cube - event_cube.collapsed(['latitude', 'longitude'], iris.analysis.MEAN)
-
                     # ANALOGUE COMPOSITES
             if var == ana_var:
                 PRST_comp = Analogues.analogues_composite_anomaly_v2(Analogues.extract_region(cube_map[var], R2), dates_prst)
@@ -1660,7 +1737,7 @@ class Analogues:
                 PRST_comp = PRST_comp * 0.0980665
                 event_cube = event_cube * 0.0980665
             if var == 'msl' or var == 'slp':
-                PAST_comp = PAST_comp * .01   # adjust for?
+                PAST_comp = PAST_comp * .01   # adjust for? mm to cm?
                 PRST_comp = PRST_comp * .01
                 event_cube = event_cube * .01    
             if var == 't2m':
@@ -1671,13 +1748,69 @@ class Analogues:
 
             lats=PRST_comp.coord('latitude').points
             lons=PRST_comp.coord('longitude').points 
-            if var == 'z500' or (var == 'msl' or var == 'slp'):  
-                con_lev = np.round(np.arange(np.min([PAST_comp.data, PRST_comp.data, event_cube.data]), np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
-                #con_lev = np.round(np.arange(-abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), 2))
+
+            # J: previous code for con_lev
+            # =====================================================================================
+            # if var == 'z500' or (var == 'msl' or var == 'slp'):  
+            #     con_lev = np.round(np.arange(np.min([PAST_comp.data, PRST_comp.data, event_cube.data]), np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
+            #     #con_lev = np.round(np.arange(-abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), 2))
+            # if var == 't2m':
+            #     con_lev = np.round(np.arange(0, np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
+            # if var == 'tp':
+            #     con_lev = np.arange(0, np.max([PAST_comp.data,PRST_comp.data, event_cube.data])/2, .2)
+            # =====================================================================================
+            
+            # J: new code for con_lev
+            # =====================================================================================
+            if var == 'z500' or (var == 'msl' or var == 'slp'):
+                vmin = np.nanmin([
+                    np.nanmin(PAST_comp.data),
+                    np.nanmin(PRST_comp.data),
+                    np.nanmin(event_cube.data),
+                ])
+                vmax = np.nanmax([
+                    np.nanmax(PAST_comp.data),
+                    np.nanmax(PRST_comp.data),
+                    np.nanmax(event_cube.data),
+                ])
+                con_lev = np.round(np.arange(vmin, vmax, 2))
             if var == 't2m':
-                con_lev = np.round(np.arange(0, np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
+                vmax = np.nanmax([
+                    np.nanmax(PAST_comp.data),
+                    np.nanmax(PRST_comp.data),
+                    np.nanmax(event_cube.data),
+                ])
+                con_lev = np.round(np.arange(0, vmax, 2))
             if var == 'tp':
-                con_lev = np.arange(0, np.max([PAST_comp.data,PRST_comp.data, event_cube.data])/2, .2)
+                vmax = np.nanmax([
+                    np.nanmax(PAST_comp.data),
+                    np.nanmax(PRST_comp.data),
+                    np.nanmax(event_cube.data),
+                ])
+                con_lev = np.arange(0, vmax / 2, 0.2)
+            # =====================================================================================
+
+            # #J : test print
+            # print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
+            # ##############
+
+            if con_lev.size < 2:
+                vmin = np.nanmin(event_cube.data)
+                vmax = np.nanmax(event_cube.data)
+
+                if not np.isfinite(vmin) or not np.isfinite(vmax):
+                    print(f"Skipping {var}: invalid data")
+                    continue
+                
+                if vmin == vmax:
+                    vmax = vmin + 1e-3
+
+                con_lev = np.linspace(vmin, vmax, 5)
+
+            # #J : test print
+            # print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
+            # ##############
+
             # Plotting event
             ax= plt.subplot(len(var_list),4,(i*4)+1,projection=ccrs.PlateCarree())
             c1 = ax.contourf(lons, lats, event_cube.data, levels=con_lev, cmap=CMAP[0], transform=ccrs.PlateCarree(), extend='both')
