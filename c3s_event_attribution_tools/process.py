@@ -23,31 +23,35 @@ class Process:
     # Don't use
     @staticmethod
     def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes.DatetimeArray,
-                           value_col:str, padding:int=15, year_range:tuple[int, int]=None,
-                           datetime_col:str="valid_time", group_by:list[str]=["longitude", "latitude", "geometry"]
+                           value_col:str, datetime_col:str="valid_time", padding:int=15,
+                            year_range:tuple[int, int]=None, group_by:list[str]=["longitude", "latitude", "geometry"]
                            ):
-        """
+        '''
         Calculate mean climatology values around each date in date_range across years,
         returning a GeoDataFrame with the same structure as the input.
 
-        Parameters
-        ----------
-        gdf : GeoDataFrame
-            Historical data with datetime and geometry.
-        date_range : pd.DatetimeIndex
-            Dates for which to calculate climatology means.
-        padding : int
-            +/- days for the averaging window.
-        value_col : str
-            Column with numeric values.
-        datetime_col : str
-            Column with datetimes.
+        Parameters:
+            gdf (GeoDataFrame, required):
+                Historical data with datetime and geometry.
+            date_range (pd.DatetimeIndex, required):
+                Dates for which to calculate climatology means.
+            value_col (str, required):
+                Column with numeric values.
+            datetime_col (str, optional):
+                Column with datetimes.
+            padding (int, optional):
+                +/- days for the averaging window.
+            year_range (tuple[int, int], optional):
+                Year range to consider (start_year, end_year).
+            group_by (list[str], optional):
+                Columns to group by when averaging. If None, averages globally.
+                Default groups by: longitude, latitude, geometry.
 
-        Returns
-        -------
-        GeoDataFrame
-            Same structure as input: longitude, latitude, valid_time, value_col, geometry
-        """
+
+        Returns:
+            GeoDataFrame:
+                Same structure as input: longitude, latitude, valid_time, value_col, geometry
+        '''
         gdf = gdf.copy()
         gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
 
@@ -109,29 +113,28 @@ class Process:
 
     @staticmethod
     def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDataFrame,
-                          value_col:str, calcation:str, datetime_col:str="valid_time"
+                          value_col:str, calcation:Literal["absolute", "relative"], datetime_col:str="valid_time"
                           ):
-        """
+        '''
         Calculate anomalies by subtracting/dividing event data from climatology means.
 
-        Parameters
-        ----------
-        event_gdf : GeoDataFrame
-            Event data with same structure as climatology.
-        mean_climatology_gdf : GeoDataFrame
-            Mean climatology from `calculate_mean_gdf`.
-        value_col : str
-            Column with numeric values to adjust.
-        datetime_col : str
-            Column with datetimes.
-        calc : str
-            Operation: "subtract" or "divide".
+        Parameters:
+            event_gdf (GeoDataFrame, required):
+                Event data with same structure as climatology.
+            mean_climatology_gdf (GeoDataFrame, required):
+                Mean climatology from `calculate_mean_gdf`.
+            value_col (str, required):
+                Column with numeric values to adjust.
+            calcation (Literal["absolute", "relative"], required):
+                Operation: "absolute", subtracts the mean from the value, or "relative", divides the difference by the mean.
+            datetime_col (str, optional):
+                Column with datetimes.
 
-        Returns
-        -------
-        GeoDataFrame
-            Same structure as input with anomaly values in value_col.
-        """
+
+        Returns:
+            GeoDataFrame:
+                Same structure as input with anomaly values in value_col.
+        '''
         event_gdf = event_gdf.copy()
         mean_climatology_gdf = mean_climatology_gdf.copy()
 
@@ -173,34 +176,32 @@ class Process:
         quantile: float = 0.9,
         group_by: list[str] = None
     ):
-        """
+        '''
         Compute rolling n-day statistics (sum, mean, std, quantile) for each point
         or globally.
 
-        Parameters
-        ----------
-        gdf : GeoDataFrame or DataFrame
-            Input data.
-        value_col : str
-            Column to roll (e.g. 't2m', 'tp').
-        padding : int
-            Window size in days.
-        centering : bool
-            Center the window.
-        datetime_col : str
-            Column with datetimes.
-        method : {"sum", "mean", "std", "quantile"}
-            Rolling aggregation method.
-        quantile : float, optional
-            Quantile to compute if method="quantile".
-        group_by : list[str], optional
-            Columns to group by before rolling. If None, roll globally.
+        Parameters:
+            gdf (GeoDataFrame | DataFrame, required):
+                Input data.
+            value_col (str, required):
+                Column to roll (e.g. 't2m', 'tp').
+            padding (int, required):
+                Window size in days.
+            centering (bool, optional):
+                Center the window.
+            datetime_col (str, optional):
+                Column with datetimes.
+            method (Literal["sum", "mean", "std", "quantile"], optional):
+                Rolling aggregation method.
+            quantile (float, optional):
+                Quantile to compute if method="quantile".
+            group_by (list[str], optional):
+                Columns to group by before rolling. If None, roll globally.
 
-        Returns
-        -------
-        DataFrame or GeoDataFrame
-            Same as input, with rolled values in `value_col`.
-        """
+        Returns:
+            DataFrame | GeoDataFrame:
+                Same as input, with rolled values in `value_col`.
+        '''
 
         if padding <= 1:
             return gdf
@@ -271,18 +272,41 @@ class Process:
         group_by: list[str] = None,
         min_periods: int|None = 1,
         remove_leap_days: bool = False,
-        ci: bool = False,
-        ci_level: float = 0.95,
+        ci: float = 0
     ):
-        """
+        '''
         Compute rolling statistics (sum, mean, std, quantile) over a fixed-size window.
         Assumes datetime_col is already at the desired temporal resolution (days, months, or years).
 
-        Returns
-        -------
-        DataFrame or GeoDataFrame
-            Same as input, with rolled values in `value_col`.
-        """
+        Parameters:
+            gdf (pd.DataFrame | gpd.GeoDataFrame, required):
+                DataFrame or GeoDataFrame
+            value_col (str, required):
+                Name of the column to roll
+            windown (int, required):
+                Size of the rolling window
+            centering (bool, optional):
+                If True, window is centered on each point.
+            datetime_col (str, optional):
+                Name of the datetime column
+            method (Literal["sum", "mean", "std", "quantile", "dispersion"], optional):
+                Rolling aggregation method
+            quantile (float, optional):
+                For quantile method
+            group_by (list[str] | None, optional):
+                Columns to group by before rolling, if None rolls globally
+            min_periods (int | None, optional):
+                Minimum number of observations in window required to have a value
+            remove_leap_days (bool, optional):
+                If True, removes Feb 29 from the data before rolling
+            ci (float, optional):
+                Confidence interval (0-1) for std and dispersion methods, set > 0 to calculate recommended 0.95
+
+        Returns:
+            gdf (pd.DataFrame | gpd.GeoDataFrame):
+                Same as input, with rolled values in `value_col`.
+        
+        '''
 
         if window <= 1:
             return gdf
@@ -318,10 +342,10 @@ class Process:
                     raise ValueError(f"Unsupported method: {method}")
 
             group[value_col] = rolled
-            
-            if ci and method in ("std", "dispersion"):
+
+            if ci > 0 and method in ("std", "dispersion"):
                 n = roller.count().reset_index(drop=True)
-                alpha = 1 - ci_level
+                alpha = 1 - ci
                 var = roller.var().reset_index(drop=True)
 
                 chi2_lower = chi2.ppf(1 - alpha / 2, n - 1)
@@ -355,16 +379,24 @@ class Process:
 
     @staticmethod
     def calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
-        """
+        '''
+        Calculate daily climatology values across years for each day of year (1-365), using a ±pad-day window.
+
         Parameters:
-        -----------
-        data : ...
-        pad : int
-            Number of days on either side to include in the window (default: 15 → 30-day window)
+            gdf (gpd.GeoDataFrame, required):
+                Input data with datetime and geometry.
+            value_col (str, required):
+                Column with numeric values.
+            event_date (datetime, required):
+                Date of the event (used to set year for output datetimes).
+            padding (int, optional):
+                Number of days on either side to include in the window (default: 15 → 30-day window)
+            datetime_col (str, optional):
+                Column with datetimes.
 
         Returns:
-        --------
-        """
+            gpd.GeoDataFrame
+        '''
 
         gdf = gdf.copy()
 
@@ -410,7 +442,6 @@ class Process:
         return_gdf[datetime_col] = pd.to_datetime(f'{event_date.year}', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
         #return_gdf["valid_time"] = pd.to_datetime(return_gdf["doy"], format="%j").dt.strftime("%m-%d")
 
-
         return return_gdf
 
 
@@ -418,7 +449,7 @@ class Process:
     # apply a weight to each value based on latitude
     @staticmethod
     def weighted_values(df:gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset, value_col:str, lat_col:str='latitude'
-                        ) -> gpd.GeoDataFrame|pd.DataFrame|Any:
+                        ) -> gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset|Any:
         
         '''
         Calculates the weights for the values based on latitude
@@ -433,16 +464,24 @@ class Process:
 
         Returns:
             gpd.GeoDataFrame|pd.DataFrame|xr.core.weighted.Weighted:
-                2D arrays return df with a new column 'value_col'+'_weighted'. xarray is returned as 'xarray.core.weighted.Weighted'
+                2D arrays return df with a new column 'value_col'+'_weighted'. xarray input only returns the calculated weights
+
+        Raises:
+            TypeError:
+                If an invalid data type is provided
         '''
+
+        # weights = np.cos(np.deg2rad(df[lat_col]))
 
         if isinstance(df, (xr.DataArray, xr.Dataset)):
             if lat_col not in df.coords:
                 raise ValueError(f"Latitude coordinate '{lat_col}' not found")
             
-            weights = np.cos(np.deg2rad(df[lat_col]))
+            print ("Calculating weights for xarray DataArray/Dataset...")
+            weights = xr.DataArray(np.cos(np.deg2rad(df[lat_col])), dims=lat_col)
 
-            return df.weighted(weights)
+            return weights
+            # return df[value_col].weighted(weights)
         
         if isinstance(df, (gpd.GeoDataFrame)):
             if value_col not in df.columns:
@@ -450,12 +489,17 @@ class Process:
             if lat_col not in df.columns:
                 raise ValueError(f"Latitude coordinate '{lat_col}' not found")
 
-            out_col = f"{value_col}_weighted"
+            print ("Calculating weights for GeoDataFrame...")
+            weights = np.cos(np.deg2rad(df[lat_col]))
 
             df = df.copy()
-            weights = np.cos(np.deg2rad(df[lat_col]))
-            df[out_col] = df[value_col] * weights
-            df["_weight"] = weights
+
+            # # maybe remove this col from the output
+            # out_col = f"{value_col}_weighted"
+            # df[out_col] = df[value_col] * weights
+
+
+            df["_weights"] = weights
 
             return df
 
@@ -463,64 +507,88 @@ class Process:
             "weighted_values expects a GeoDataFrame, DataFrame, "
             "xarray DataArray, or xarray Dataset"
             )
-
-    @staticmethod
-    def calculate_mean(gdf:gpd.GeoDataFrame, value_col:str, groupby_col:str) -> gpd.GeoDataFrame:
-
-        is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
-        crs = gdf.crs if is_spatial else None
-
-        if '_weight' in gdf.columns:
-            gdf = (
-                gdf.groupby(groupby_col)
-                .apply(lambda x: x[f"{value_col}_weighted"].sum() / x["_weight"].sum())
-                # .reset_index()
-                .reset_index(name=value_col)
-            )
-        else:
-            gdf = gdf.groupby(groupby_col)[value_col].mean().reset_index()
-
-        if is_spatial:
-            gdf = gpd.GeoDataFrame(gdf,geometry=gpd.points_from_xy(gdf.longitude, gdf.latitude), crs=crs)
-
-        return gdf
     
     # J: So I don't know if this works anymore for spatial data. Had to change this because the old function (above) wasn't working for the trend analysis for some reason
     # J: or if the output is even similar to the original
+    # J: this does not work for xarray, only geopandas
     @staticmethod
-    def calculate_mean(gdf: gpd.GeoDataFrame, value_col: str, groupby_col: str) -> gpd.GeoDataFrame:
+    def calculate_mean(df: gpd.GeoDataFrame|xr.DataArray|xr.Dataset, value_col: str, groupby_col: str|list[str]) -> gpd.GeoDataFrame:
 
-        # Check if GeoDataFrame
-        is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
-        crs = gdf.crs if is_spatial else None
+        '''
+        Calculate mean values grouped by specified columns.
 
-        if '_weight' in gdf.columns:
-            # Weighted mean
-            weighted_mean = gdf.groupby(groupby_col).apply(
-                lambda x: x[f"{value_col}_weighted"].sum() / x["_weight"].sum()
+        Parameters:
+            df (gpd.GeoDataFrame | xr.DataArray | xr.Dataset, required):
+                Input data.
+            value_col (str, required):
+                Column with numeric values (for GeoDataFrame).
+            groupby_col (str | list[str], required):
+                Column(s) to group by.
+            
+        Returns:
+            gpd.GeoDataFrame | xr.DataArray:
+                Mean values grouped by specified columns.
+        
+        Raises:
+            TypeError:
+                If input type is unsupported.
+        '''
+
+        # this line doesnt work because groupby cant be used on a weighted dataframe
+        if isinstance(df, (xr.DataArray, xr.Dataset)):
+            return (df.groupby(groupby_col).mean(dim=('latitude', 'logitude')))
+
+        if isinstance(df, (gpd.GeoDataFrame)):
+            if '_weights' in df.columns:
+                # Weighted mean
+                gdf_result = df.groupby(groupby_col).apply(
+                    lambda x: (x[value_col] * x["_weights"]).sum() / x["_weights"].sum()
+                ).reset_index(name=value_col)
+                # .rename(value_col).reset_index()
+
+            else:
+                # Unweighted mean
+                gdf_result = df.groupby(groupby_col)[value_col].mean().reset_index()
+
+            is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
+            crs = df.crs if is_spatial else None
+
+            if is_spatial:
+                # Recreate geometry if needed
+                gdf_result = gpd.GeoDataFrame(
+                    gdf_result, 
+                    geometry=gpd.points_from_xy(gdf_result.longitude, gdf_result.latitude), 
+                    crs=crs
+                )
+
+            return gdf_result
+        
+        #else
+        raise TypeError(
+            "weighted_values expects a GeoDataFrame, DataFrame, "
+            "xarray DataArray, or xarray Dataset"
             )
-
-            # Convert to DataFrame safely
-            gdf_result = weighted_mean.reset_index()  # now each column is 1D
-            gdf_result = gdf_result.rename(columns={0: value_col})
-
-        else:
-            # Unweighted mean
-            gdf_result = gdf.groupby(groupby_col)[value_col].mean().reset_index()
-
-        if is_spatial:
-            # Recreate geometry if needed
-            gdf_result = gpd.GeoDataFrame(
-                gdf_result, 
-                geometry=gpd.points_from_xy(gdf_result.longitude, gdf_result.latitude), 
-                crs=crs
-            )
-
-        return gdf_result
 
 
     @staticmethod
     def calculate_max(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str, groupby_col:str) -> gpd.GeoDataFrame:
+        '''
+        Calculate maximum values grouped by specified column.
+
+        Parameters:
+            gdf (gpd.GeoDataFrame, required):
+                Input data.
+            value_col (str, required):
+                Column with numeric values.
+            datetime_col (str, required):
+                Column with datetimes.
+            groupby_col (str, required):
+                Column to group by.
+
+        Returns:
+            gpd.GeoDataFrame:
+                Maximum values grouped by specified column.
+        '''
 
         return (
             gdf.loc[gdf.groupby(groupby_col)[value_col].idxmax(), [groupby_col, datetime_col, value_col]]
@@ -529,6 +597,22 @@ class Process:
 
     @staticmethod
     def calculate_min(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str, groupby_col:str) -> gpd.GeoDataFrame:
+        '''
+        Calculate minimum values grouped by specified column.
+        Parameters:
+            gdf (gpd.GeoDataFrame, required):
+                Input data.
+            value_col (str, required):
+                Column with numeric values.
+            datetime_col (str, required):
+                Column with datetimes.
+            groupby_col (str, required):
+                Column to group by.
+
+        Returns:
+            gpd.GeoDataFrame:
+                Minimum values grouped by specified column.
+        '''
 
         return (
             gdf.loc[gdf.groupby(groupby_col)[value_col].idxmin(), [groupby_col, datetime_col, value_col]]
@@ -539,23 +623,34 @@ class Process:
     def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str,
                                yearly_value:str, month_range:tuple[int, int]|None=None,
                                padding:int=0, method:str='mean') -> gpd.GeoDataFrame:
+        '''
+        Calculate yearly values (mean, max, min) from daily data with optional rolling window and month subsetting.
 
-        # if month_range is present select a subset of the gdf
-        # if month_range is not None:
-        #     start_date = pd.Timestamp(year=2001, month=month_range[0], day=1)
-        #     end_date = pd.Timestamp(year=2001, month=month_range[1], day=1) + pd.offsets.MonthEnd(1)
+        Parameters:
+            gdf (gpd.GeoDataFrame, required):
+                Input data with daily values.
+            value_col (str, required):
+                Column with numeric values.
+            datetime_col (str, required):
+                Column with datetimes.
+            yearly_value (str, required):
+                Yearly statistic to compute: 'mean', 'max', or 'min'.
+            month_range (tuple[int, int] | None, optional):
+                Month range (start_month, end_month) to subset data before calculation.
+                If None, uses all months.
+            padding (int, optional):
+                Days for rolling window (default: 0, no rolling).
+            method (str, optional):
+                Rolling method: 'mean', 'sum', 'std', or 'quantile' (default: 'mean').
+            
+            Returns:
+                gpd.GeoDataFrame:
+                    Yearly values as specified by `yearly_value`.
 
-        #     # if padding is > 1 add padding to subset
-        #     if padding > 1:
-
-        #         start_date = start_date - pd.Timedelta(days=padding)
-        #         end_date = end_date + pd.Timedelta(days=padding)
-
-        #     start_doy = start_date.timetuple().tm_yday
-        #     end_doy = end_date.timetuple().tm_yday
-
-        #     # subset the gdf
-        #     gdf = subset_gdf(gdf=gdf, datetime_col=datetime_col, doy_range=(start_doy, end_doy))
+            Raises:
+                ValueError:
+                    If `yearly_value` is not 'mean', 'max', or 'min'.
+        '''
 
         # calculate running mean. if padding == 1 gdf gets automatically returned
         rolled_gdf = Process.calculate_rolling_n_days(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
@@ -575,7 +670,7 @@ class Process:
 
         match yearly_value:
             case 'mean':
-                return Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
+                return Process.calculate_mean(df=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
             case 'max':
                 return Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year'), rolled_gdf
             case 'min':
@@ -586,12 +681,38 @@ class Process:
     @staticmethod
     def calculate_seasonal_cycle(clim31d: gpd.GeoDataFrame,
                             studyregion: gpd.GeoDataFrame | dict,
-                            month_range: tuple[int, int],
                             value_col: str,
-                            datetime_col: str,
-                            event_end: pd.Timestamp
-    ):
+                            event_end: pd.Timestamp,
+                            datetime_col: str = "valid_time",
+                            month_range: tuple[int, int]=(1,12),
+    ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, pd.Index, pd.DatetimeIndex]:
+        '''
+        Calculate seasonal cycle of climatology data for a study region.
+
+        Parameters:
+            clim31d (gpd.GeoDataFrame, required):
+                Climatology data with daily values.
+            studyregion (gpd.GeoDataFrame | dict, required):
+                Study region as GeoDataFrame or GeoJSON-like dict.
+            value_col (str, required):
+                Column with numeric values.
+            event_end (pd.Timestamp, required):
+                End date of the event (used to set year for output datetimes).
+            datetime_col (str, optional):
+                Column with datetimes.
+            month_range (tuple[int, int], optional):
+                Month range (start_month, end_month) to subset data before calculation.
+        
+        Returns:
+            tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, pd.Index[Any], pd.DatetimeIndex]:
+                - Seasonal cycle time series as GeoDataFrame.
+                - Plot DataFrame for seasonal cycle.
+                - Labels for x-axis.
+                - Ticks for x-axis.
+        '''
+
         gdf_sub = Utils.subset_gdf(gdf=clim31d, study_region=studyregion, month_range=month_range)
+
         gdf_sub[datetime_col] = (
             pd.to_datetime(f"{event_end.year}", format="%Y")
             + pd.to_timedelta(gdf_sub["doy"] - 1, unit="D")
@@ -605,31 +726,28 @@ class Process:
 
     @staticmethod
     def filter_polygons_by_kg(
-        polygons: List[Polygon],
+        polygons: list[Polygon],
         kg_da: xr.DataArray,
-        category,
+        category: str | list[str],
         invert: bool = True  # True → exclude category, False → keep only category
-    ):
-        """
+    ) -> Polygon:
+        '''
         Filter polygons based on Köppen–Geiger classification raster.
 
-        Parameters
-        ----------
-        polygons : list of shapely.Polygon
-            Input polygons to filter.
-        kg_da : xarray.DataArray
-            Köppen–Geiger classification raster (integer-coded).
-        category : str or list of str
-            Category or categories to filter (e.g. 'Tropical', ['Arid','Temperate']).
-        invert : bool, optional
-            If True, exclude the given categories (keep everything else).
-            If False, keep only the given categories.
+        Parameters:
+            polygons (list[Polygon], required):
+                Input polygons to filter.
+            kg_da (xarray.DataArray, required):
+                Köppen–Geiger classification raster (integer-coded).
+            category (str | list[str], required):
+                Category or categories to filter (e.g. 'Tropical', ['Arid','Temperate']).
+            invert (bool, optional):
+                If True, exclude the given categories (keep everything else). If False, keep only the given categories.
 
-        Returns
-        -------
-        adjusted_polygons : list of shapely.Polygon
-            Polygons after Köppen–Geiger filtering.
-        """
+        Returns:
+            adjusted_polygons (list[Polygon]):
+                Polygons after Köppen–Geiger filtering.
+        '''
         KG_GROUPS = {
             "Tropical": [1,2,3],
             "Arid": [4,5,6,7],
@@ -711,10 +829,30 @@ class Process:
         padding: int=0,                   # n-day rolling window
         method: str = None              # "mean" or "sum"
     ) -> dict[str, xr.DataArray]:
-        """
+        '''
         Iterates over a dictionary of DataArrays, applies a rolling window and 
         resamples to yearly values (max, mean, or min) in a single step.
-        """
+
+        Parameters:
+            time_series (dict[str, xr.DataArray], required):
+                Dictionary of DataArrays with daily time series.
+            yearly_value (str, required):
+                Yearly statistic to compute: 'max', 'mean', or 'min'.
+            padding (int, required):
+                Days for rolling window.
+            method (str, optional):
+                Rolling method: 'mean' or 'sum'. If None, determined automatically
+
+        Returns:
+            dict[str, xr.DataArray]:
+                Dictionary of DataArrays with yearly statistics.
+
+        Raises:
+            ValueError:
+                If `method` is not 'mean' or 'sum'.
+            ValueError:
+                If `yearly_value` is not 'max', 'mean', or 'min'.
+        '''
         da_yearly_series = {}
 
         for name, da in time_series.items():
@@ -758,6 +896,93 @@ class Process:
             da_yearly_series[name] = da_year
 
         return da_yearly_series
+
+    def fill_missing_gmst_with_climatology(
+        gmst_monthly: pd.DataFrame,
+        climatology: pd.DataFrame,
+        gmst_value_col: str = "t2m",
+        climatology_value_col: str = "t2m",
+        datetime_col: str = "valid_time"
+    ) -> pd.DataFrame:
+        '''
+        Fill missing GMST monthly values using climatology + anomaly.
+
+        This function:
+        1. Ensures the datetime format.
+        2. Sorts the GMST dataset by time.
+        3. Builds a complete monthly date range up to the last available year December.
+        4. Reindexes GMST onto this range.
+        5. Fills any missing months using:
+             GMST_missing = clim_missing_month + anomaly
+
+        Parameters:
+            gmst_monthly (pd.DataFrame, required):
+                GMST dataset with columns for timestamp and temperature.
+            climatology (pd.DataFrame, required):
+                Monthly climatology dataset with same time/value columns.
+            gmst_value_col (str, optional):
+                Name of the value column in the GMST dataset (default = "t2m").
+            climatology_value_col (str, optional):
+                Name of the temperature column (default = "t2m"). Optional.
+            datetime_col (str, optional):
+                Name of the datetime column (default = "valid_time"). Optional.
+
+        Returns:
+            pd.DataFrame:
+                A DataFrame with a full monthly GMST time series and missing values filled.
+        '''
+
+        # --- Ensure datetime ---
+        gmst_monthly[datetime_col] = pd.to_datetime(gmst_monthly[datetime_col])
+        climatology[datetime_col] = pd.to_datetime(climatology[datetime_col])
+
+        # --- Sort GMST chronologically ---
+        gmst_monthly = (
+            gmst_monthly
+            .sort_values(datetime_col)
+            .reset_index(drop=True)
+        )
+
+        # --- Build complete monthly date range ---
+        last_year = gmst_monthly[datetime_col].dt.year.max()
+        full_range = pd.date_range(
+            start=gmst_monthly[datetime_col].min(),
+            end=pd.Timestamp(year=last_year, month=12, day=1),
+            freq="MS"
+        )
+
+        # --- Reindex onto full range ---
+        gmst_complete = (
+            gmst_monthly
+            .set_index(datetime_col)
+            .reindex(full_range)
+        )
+        gmst_complete.index.name = datetime_col
+
+        # --- Fill missing values using clim + anomaly ---
+        missing_indices = gmst_complete[gmst_complete[gmst_value_col].isna()].index
+
+        for idx in missing_indices:
+            # previous available GMST
+            prev_idx = gmst_complete.index[gmst_complete.index < idx][-1]
+            last_gmst = gmst_complete.loc[prev_idx, gmst_value_col]
+
+            # climatology values
+            prev_clim = climatology.loc[
+                climatology[datetime_col].dt.month == prev_idx.month, climatology_value_col
+            ].iloc[0]
+
+            missing_clim = climatology.loc[
+                climatology[datetime_col].dt.month == idx.month, climatology_value_col
+            ].iloc[0]
+
+            # anomaly
+            anomaly = last_gmst - prev_clim
+
+            # fill missing value
+            gmst_complete.loc[idx, gmst_value_col] = missing_clim + anomaly
+
+        return gmst_complete.reset_index().rename(columns={"index": datetime_col})
     
     @staticmethod
     def build_cordex_model_pairs(catalog_file: Path, domain_input, experiments=("hist", "rcp85"), temporal_filter: str = "day"):
@@ -985,11 +1210,11 @@ class Process:
                 results["time_series"][label] = tsfinal_out
                 results["processed"].append(original_entry)
                 
-                print(f"✅ {label} Processed successfully.")
+                print(f"SUCCES: {label} Processed successfully.")
 
             except Exception as exc:
                 results["dropped"].append(original_entry)
-                print(f"❌ {label} Failed: {exc}")
+                print(f"ERROR: {label} Failed: {exc}")
                 continue
 
         return results
@@ -1048,13 +1273,13 @@ class Process:
                     ref_val = df_subset.loc[df_subset["year"] == event_year, "gmst"].values[0]
                     df_subset["gmst"] = df_subset["gmst"] - ref_val
                     results[model_name] = df_subset
-                    print(f"✅ GMST anomaly calculated (Ref {event_year}: {ref_val:.2f}°C)")
+                    print(f"SUCCES: GMST anomaly calculated (Ref {event_year}: {ref_val:.2f}°C)")
                 except IndexError:
-                    print(f"⚠️ Event year {event_year} not found in model {model_name} range.")
+                    print(f"WARNING: Event year {event_year} not found in model {model_name} range.")
                     continue
 
             except Exception as e:
-                print(f"❌ Failed to process GMST for {model_name}: {e}")
+                print(f"ERROR: Failed to process GMST for {model_name}: {e}")
                 
         return results
     
@@ -1081,7 +1306,7 @@ class Process:
                     varnm = "value", covnm = "gmst", lower = FALSE)
             }, error = function(e) {
                 # If default fails, try again using Nelder-Mead
-                message(paste("      ⚠️ Default fit failed for", model_name, "- trying Nelder-Mead..."))
+                message(paste("WARNING: Default fit failed for", model_name, "- trying Nelder-Mead..."))
                 tryCatch({
                     fit_ns(dist = "gev", type = "shift", data = df, 
                         varnm = "value", covnm = "gmst", lower = FALSE, 
@@ -1115,7 +1340,7 @@ class Process:
                             cov_fut = cov_fut, 
                             y_now = y_now, y_start = y_start, y_fut = y_end, nsamp = nsamp)
             }, error = function(e) {
-                cat("      ❌ Extraction failed:", e$message, "\n")
+                cat("ERROR: Extraction failed:", e$message, "\n")
                 return(NULL)
             })
 
