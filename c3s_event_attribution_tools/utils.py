@@ -1216,6 +1216,60 @@ class Utils:
         display(ui)
 
     @staticmethod
+    def get_parameter_config(parameter):
+        PARAMETER_CONFIG = {
+                "Tmax": {
+                    "variable": "Maximum Temperature",
+                    "value_col": "t2m",
+                    "y_label": "c",
+                    "unit": "°C",
+                    "calculation": "absolute",
+                    "method": "Mean",
+                    "datetime_col": "valid_time",
+                    "from_unit": "k",
+                    "to_unit": "c",
+                },
+                "Tmean": {
+                    "variable": "Mean Temperature",
+                    "value_col": "t2m",
+                    "y_label": "c",
+                    "unit": "°C",
+                    "calculation": "absolute",
+                    "method": "Mean",
+                    "datetime_col": "valid_time",
+                    "from_unit": "k",
+                    "to_unit": "c",
+                },
+                "Tmin": {
+                    "variable": "Minimum Temperature",
+                    "value_col": "t2m",
+                    "y_label": "c",
+                    "unit": "°C",
+                    "calculation": "absolute",
+                    "method": "Mean",
+                    "datetime_col": "valid_time",
+                    "from_unit": "k",
+                    "to_unit": "c",
+                },
+                "Precipitation": {
+                    "variable": "Total Precipitation",
+                    "value_col": "tp",
+                    "y_label": "mm",
+                    "unit": "mm",
+                    "calculation": "relative",
+                    "method": "Total",
+                    "datetime_col": "valid_time",
+                    "from_unit": "m",
+                    "to_unit": "mm",
+                },
+            }
+        try:
+            return PARAMETER_CONFIG.get(parameter)
+        except Exception as e:
+            print(f"Error retrieving parameter config for {parameter}: {e}")
+            return None
+
+    @staticmethod
     def var_map(parameter, model):
         VAR_MAP = {
             "Tmean":         {"cordex": "tas",    "cmip6": "near_surface_air_temperature", "era5": "temperature_2m_mean"},
