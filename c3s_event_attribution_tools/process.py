@@ -512,7 +512,7 @@ class Process:
     # J: or if the output is even similar to the original
     # J: this does not work for xarray, only geopandas
     @staticmethod
-    def calculate_mean(df: gpd.GeoDataFrame|xr.DataArray|xr.Dataset, value_col: str, groupby_col: str|list[str]) -> gpd.GeoDataFrame:
+    def calculate_mean(gdf: gpd.GeoDataFrame|xr.DataArray|xr.Dataset, value_col: str, groupby_col: str|list[str]) -> gpd.GeoDataFrame:
 
         '''
         Calculate mean values grouped by specified columns.
@@ -535,23 +535,23 @@ class Process:
         '''
 
         # this line doesnt work because groupby cant be used on a weighted dataframe
-        if isinstance(df, (xr.DataArray, xr.Dataset)):
-            return (df.groupby(groupby_col).mean(dim=('latitude', 'logitude')))
+        if isinstance(gdf, (xr.DataArray, xr.Dataset)):
+            return (gdf.groupby(groupby_col).mean(dim=('latitude', 'longitude')))
 
-        if isinstance(df, (gpd.GeoDataFrame)):
-            if '_weights' in df.columns:
+        if isinstance(gdf, (gpd.GeoDataFrame, pd.DataFrame)):
+            if '_weights' in gdf.columns:
                 # Weighted mean
-                gdf_result = df.groupby(groupby_col).apply(
+                gdf_result = gdf.groupby(groupby_col).apply(
                     lambda x: (x[value_col] * x["_weights"]).sum() / x["_weights"].sum()
                 ).reset_index(name=value_col)
                 # .rename(value_col).reset_index()
 
             else:
                 # Unweighted mean
-                gdf_result = df.groupby(groupby_col)[value_col].mean().reset_index()
+                gdf_result = gdf.groupby(groupby_col)[value_col].mean().reset_index()
 
             is_spatial = 'longitude' in groupby_col and 'latitude' in groupby_col and 'geometry' in groupby_col
-            crs = df.crs if is_spatial else None
+            crs = gdf.crs if is_spatial else None
 
             if is_spatial:
                 # Recreate geometry if needed
@@ -670,7 +670,7 @@ class Process:
 
         match yearly_value:
             case 'mean':
-                return Process.calculate_mean(df=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
+                return Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
             case 'max':
                 return Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year'), rolled_gdf
             case 'min':
