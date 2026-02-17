@@ -1213,7 +1213,7 @@ class Utils:
             save_button, 
             output
         ])
-        display(ui)
+        return ui
 
     @staticmethod
     def get_parameter_config(parameter):
