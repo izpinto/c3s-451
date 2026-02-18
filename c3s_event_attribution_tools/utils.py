@@ -1034,6 +1034,7 @@ class Utils:
         """
         Creates an interactive, scrollable table for Model Validation.
         """
+        df_validation['Include T/F'] = df_validation['Include T/F'].astype(object)
         df_filtered = df_validation.copy()
         if project_filter.lower() != 'all':
             df_filtered = df_filtered[df_filtered['project'].str.lower() == project_filter.lower()]
@@ -1224,7 +1225,7 @@ class Utils:
                     "y_label": "c",
                     "unit": "°C",
                     "calculation": "absolute",
-                    "method": "Mean",
+                    "method": "mean",
                     "datetime_col": "valid_time",
                     "from_unit": "k",
                     "to_unit": "c",
@@ -1235,7 +1236,7 @@ class Utils:
                     "y_label": "c",
                     "unit": "°C",
                     "calculation": "absolute",
-                    "method": "Mean",
+                    "method": "mean",
                     "datetime_col": "valid_time",
                     "from_unit": "k",
                     "to_unit": "c",
@@ -1246,7 +1247,7 @@ class Utils:
                     "y_label": "c",
                     "unit": "°C",
                     "calculation": "absolute",
-                    "method": "Mean",
+                    "method": "mean",
                     "datetime_col": "valid_time",
                     "from_unit": "k",
                     "to_unit": "c",
@@ -1257,7 +1258,7 @@ class Utils:
                     "y_label": "mm",
                     "unit": "mm",
                     "calculation": "relative",
-                    "method": "Total",
+                    "method": "sum",
                     "datetime_col": "valid_time",
                     "from_unit": "m",
                     "to_unit": "mm",
