@@ -1236,7 +1236,7 @@ class Process:
                 results["time_series"][label] = tsfinal_out
                 results["processed"].append(original_entry)
                 
-                print(f"SUCCES: {label} Processed successfully.")
+                print(f"{label} Processed successfully.")
 
             except Exception as exc:
                 results["dropped"].append(original_entry)
@@ -1246,7 +1246,7 @@ class Process:
         return results
     
     @staticmethod
-    def compute_gmst_anomalies(gmst_dict, event_year, year_range=(1951, 2100), window=4):
+    def compute_gmst_anomalies(gmst_dict, event_year, year_range=(1950, 2100), window=4):
         """
         Computes yearly GMST rolling anomalies relative to a specific event year.
         Compatible with CMIP5 and CMIP6 'tas' datasets.
@@ -1264,7 +1264,7 @@ class Process:
             try:
                 # Extract variable and convert units
                 da = ds['tas']
-                da = da - 273.15  # Convert from Kelvin to Celsius 
+                da = Utils.wrap_lon(da)
 
                 # Standardize coordinate names for CMIP5/6 compatibility
                 if "lat" in da.coords: da = da.rename({"lat": "latitude"})
@@ -1294,6 +1294,7 @@ class Process:
                     date_range=(year_range[0], year_range[1])
                 ).copy()
 
+                df_subset["gmst"] = conversions.Conversions.convert_temperature(df_subset["gmst"], "k", "c")
                 # Calculate Anomaly relative to Event Year
                 try:
                     ref_val = df_subset.loc[df_subset["year"] == event_year, "gmst"].values[0]
@@ -1371,7 +1372,7 @@ class Process:
         r_code = """
         analyze_extreme_scenario <- function(model_name, rp, model_df, gmst_df, 
                                             y_start, y_end, y_now, nsamp,dGMST_target, 
-                                            scenario_label, save_dir) {
+                                            scenario_label, dist, type, save_dir) {
             
             cat(paste0("   Scenario [", scenario_label, "]: Years ", y_start, "-", y_end, "\n"))
             
@@ -1385,13 +1386,13 @@ class Process:
             # 2. Fit Model
             mdl <- tryCatch({
                 # Try first with the default optimization method
-                fit_ns(dist = "gev", type = "shift", data = df, 
+                fit_ns(dist = dist, type = type, data = df, 
                     varnm = "value", covnm = "gmst", lower = FALSE)
             }, error = function(e) {
                 # If default fails, try again using Nelder-Mead
                 message(paste("WARNING: Default fit failed for", model_name, "- trying Nelder-Mead..."))
                 tryCatch({
-                    fit_ns(dist = "gev", type = "shift", data = df, 
+                    fit_ns(dist = dist, type = type, data = df, 
                         varnm = "value", covnm = "gmst", lower = FALSE, 
                         method = "Nelder-Mead")
                 }, error = function(e2) {

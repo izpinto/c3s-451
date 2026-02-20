@@ -26,6 +26,7 @@ import matplotlib.image as mpimg
 from matplotlib.colors import LogNorm
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
+import matplotlib.gridspec as gridspec
 from IPython.display import display, clear_output
 import re
 from shapely.geometry import box
@@ -1850,7 +1851,8 @@ class Plot:
             axs.flatten()[j].set_axis_off()
 
         if subtitle:
-            fig.suptitle(title, y=1.2, fontsize=20, weight='medium')
+            fig.suptitle(title, fontsize=20, weight='medium')
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
 
         if add_logos:
             plt.close(fig)
@@ -1862,114 +1864,107 @@ class Plot:
     
 
     @staticmethod
-    def plot_spatial_maps(obs:xr.Dataset,
-                          spatial_maps:dict,
-                          value_col:str,
-                          legend_title:str|None=None,
-                          ncols:int=4,
-                          cmap:str|None=None,
-                        #   borders:bool=True,
-                        #   coastlines:bool=True,
-                        #   gridlines:bool=True,
-                          projection:cartopy.crs=ccrs.PlateCarree(),
-                        #   dpi:int=100,
-                          add_logos:bool=True
-    ) -> tuple[plt.Figure, plt.Axes, plt.Axes | None]:
+    def plot_spatial_maps(obs: xr.Dataset,
+                      spatial_maps: dict,
+                      value_col: str,
+                      legend_title: str | None = None,
+                      ncols: int = 4,
+                      cmap: str | None = None,
+                      projection: ccrs.Projection = ccrs.PlateCarree(),
+                      add_logos: bool = True
+        ) -> tuple:
         '''
         Plots ERA5 (obs) in the top-left corner and CORDEX models in subsequent rows.
 
-        Parameters:
-            obs (xarray.Dataset, required):
-                The xarray Dataset containing the observational data (ERA5).
-            spatial_maps(dict, required):
-                A dictionary where keys are model names and values are xarray DataArrays
-                containing the spatial map data for each model.
-            value_col (str, required):
-                The variable name/column in the datasets to plot (e.g., 't2m', 'tp').
-            legend_title (str | None, optional):
-                The title for the overall figure legend. Defaults to None.
-            ncols (int, optional):
-                The number of columns in the subplot grid. Defaults to 4.
-            cmap (str | matplotlib.colors.Colormap | None, optional):
-                The desired colormap type (e.g., "t2m", "tp", "anomaly") or a
-                standard Matplotlib colormap name. Defaults to None (inferred from `value_col`).
-            projection (cartopy.crs, optional);
-                The Cartopy coordinate reference system for the map. Defaults to ccrs.PlateCarree().
-            add_logos (bool, optional);
-                Whether to add a custom image/logo below the plot. Defaults to True.
+            Parameters:
+                obs (xarray.Dataset, required):
+                    The xarray Dataset containing the observational data (ERA5).
+                spatial_maps(dict, required):
+                    A dictionary where keys are model names and values are xarray DataArrays
+                    containing the spatial map data for each model.
+                value_col (str, required):
+                    The variable name/column in the datasets to plot (e.g., 't2m', 'tp').
+                legend_title (str | None, optional):
+                    The title for the overall figure legend. Defaults to None.
+                ncols (int, optional):
+                    The number of columns in the subplot grid. Defaults to 4.
+                cmap (str | matplotlib.colors.Colormap | None, optional):
+                    The desired colormap type (e.g., "t2m", "tp", "anomaly") or a
+                    standard Matplotlib colormap name. Defaults to None (inferred from `value_col`).
+                projection (cartopy.crs, optional);
+                    The Cartopy coordinate reference system for the map. Defaults to ccrs.PlateCarree().
+                add_logos (bool, optional);
+                    Whether to add a custom image/logo below the plot. Defaults to True.
 
-        Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
-                A tuple containing:
-                - fig: The generated Matplotlib Figure.
-                - ax: The Matplotlib Axes object with the spatial maps.
-                - img_ax: The Axes object containing the added logo, or None if `add_logos` is False.
+            Returns:
+                tuple
+                    A tuple containing:
+                    - fig: The generated Matplotlib Figure.
+                    - ax: The Matplotlib Axes object with the spatial maps.
+                    - img_ax: The Axes object containing the added logo, or None if `add_logos` is False
         '''
-
-        cmap = cmap if cmap else value_col
+        cmap_name = cmap if cmap else value_col
         n_models = len(spatial_maps)
-        total_slots = ncols + n_models
+        nrows = int(np.ceil((ncols + n_models) / ncols))
+        
+        fig = plt.figure(figsize=(ncols * 5, nrows * 2.5))
+        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.4, wspace=0.1)
+        
+        axs_flat = []
+        for r in range(nrows):
+            for c in range(ncols):
+                ax = fig.add_subplot(gs[r, c], projection=projection)
+                axs_flat.append(ax)
 
-        fig, axs, axs_flat, nrows, ncols = Plot.create_grid(
-            n_panels=total_slots, 
-            projection=projection
-        )
-
-        # Calculate Global Limits 
+        # Data Processing & Limits
         data_obs = obs.mean(dim="valid_time") if "valid_time" in obs.dims else obs
-        vmin, vmax = data_obs.min().values, data_obs.max().values
-        cmap, norm = Plot.get_colormap(cmap, vmin, vmax, value_col=value_col)
+        vmin, vmax = float(data_obs.min()), float(data_obs.max())
+        
+        # Get colormap 
+        cmap_obj, norm = Plot.get_colormap(cmap_name, vmin, vmax, value_col=value_col)
 
-        # Observational data
+        # Plot ERA5 (Top Left)
         ax_obs = axs_flat[0]
-
         ax_obs.pcolormesh(
             data_obs.longitude, data_obs.latitude, data_obs,
-            cmap=cmap, norm=norm, transform=ccrs.PlateCarree()
+            cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
         )
-
-        ax_obs.set_title("ERA5", fontsize=18, weight='medium')
-
-        # Apply standard plot.py map features
-        ax_obs.coastlines()
-        ax_obs.add_feature(cartopy.feature.BORDERS, lw=1, alpha=0.7, ls="--")
-        ax_obs.gridlines(draw_labels=False, linewidth=0.5, color='black', alpha=0.2)
-
+        ax_obs.set_title("ERA5", fontsize=18, weight='medium', pad=12)
 
         # Turn off the rest of the first row (empty space)
         for i in range(1, ncols):
-            axs_flat[i].set_axis_off()
+            axs_flat[i].axis('off')
 
-        # Cordex models
+        # Plot CORDEX Models
         start_index = ncols
-
         for i, (name, da_clim) in enumerate(spatial_maps.items()):
             ax_idx = start_index + i
+            if ax_idx >= len(axs_flat): break
+            
             ax = axs_flat[ax_idx]
-
-            # Plot
             ax.pcolormesh(
                 da_clim.longitude, da_clim.latitude, da_clim,
-                cmap=cmap, norm=norm, transform=ccrs.PlateCarree()
+                cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
             )
+            ax.set_title(name, fontsize=16, weight='medium', pad=10)
 
-            ax.set_title(name, fontsize=16, weight='medium')
-
-            # Standard features
+        # Apply Standard Features to active plots
+        active_indices = [0] + list(range(start_index, start_index + n_models))
+        for idx in active_indices:
+            ax = axs_flat[idx]
             ax.coastlines()
-            ax.add_feature(cartopy.feature.BORDERS, lw=1, alpha=0.7, ls="--")
+            ax.add_feature(cfeature.BORDERS, lw=1, alpha=0.7, ls="--")
             ax.gridlines(draw_labels=False, linewidth=0.5, color='black', alpha=0.2)
 
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # Tick and Colorbar Logic
+        sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
         sm._A = []
 
-        # Handle any normalization type to determine ticks
         if hasattr(norm, "boundaries") and norm.boundaries is not None:
             ticks = norm.boundaries
             tick_labels = [int(b) for b in ticks]
-
         else:
-            if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
+            if cmap_obj.name == "anomaly_cmap" and value_col in ["tp"]:
                 ticks = np.linspace(norm.vmin, norm.vmax, len(ANOMALY_COLORS))
                 for t in [0, -0.5]:
                     if t not in ticks:
@@ -1986,33 +1981,29 @@ class Plot:
                 ticks = np.linspace(norm.vmin, norm.vmax, n_ticks)
                 tick_labels = [round(t, 1) for t in ticks]
 
-
+        # Add Colorbar
         cbar = fig.colorbar(
-            sm, ax=axs_flat.tolist(), 
+            sm, ax=axs_flat, 
             orientation='horizontal', location="top",
-            fraction=0.01, pad=.08, aspect=100, ticks=ticks)
-
-        if cmap.name == "anomaly_cmap" and value_col in ["tp"]:
-            cbar.ax.set_xlim(-0.5, None)
-
-        cbar.set_label(legend_title, labelpad=10, fontsize=27, weight='bold', color='#364563')
+            fraction=0.02, pad=0.06, aspect=80, ticks=ticks
+        )
+        
+        cbar.set_label(legend_title, labelpad=15, fontsize=22, weight='bold', color='#364563')
         cbar.set_ticklabels(tick_labels)
+        
+        # Custom font for ticks
+        plt.setp(cbar.ax.get_xticklabels(), fontsize=13)
 
-        plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
-
-
-        # Hide unused axes in the bottom rows
-        last_used_index = start_index + n_models
-        for i in range(last_used_index, len(axs_flat)):
-            axs_flat[i].set_axis_off()
+        # Hide unused axes in the remaining grid slots
+        for i in range(start_index + n_models, len(axs_flat)):
+            axs_flat[i].axis('off')
 
         if add_logos:
             plt.close(fig)
-            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.2)
+            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.1)
             return fig, axs_flat, img_ax
-        else:
-            plt.tight_layout()
-            return fig, axs_flat, None
+        
+        return fig, axs_flat, None
 
     @staticmethod
     def month_ticks() -> tuple[list[int], list[str], pd.DatetimeIndex]:
