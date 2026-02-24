@@ -215,9 +215,9 @@ class DataClient():
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     dss.append(ds_cds)
         
-            all_dss.append(xr.concat(dss, dim='valid_time')) # type: ignore
+            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) # type: ignore
         
-        return xr.concat(all_dss, dim='valid_time') # type: ignore
+        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
     
     def _get_beacon_cache_daily_pressure_levels_gpd(
         self,
@@ -262,7 +262,7 @@ class DataClient():
             # Merge adjusted_dss along longitude dimension
             dss.append(xr.merge(adjusted_dss, join="outer"))
         
-        return xr.concat(dss, dim='valid_time') # type: ignore
+        return xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
     
     def _get_cds_daily_data_pressure_levels_gpd(
         self,
@@ -373,9 +373,9 @@ class DataClient():
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     dss.append(ds_cds)
         
-            all_dss.append(xr.concat(dss, dim='valid_time')) # type: ignore
+            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) # type: ignore
         
-        return xr.concat(all_dss, dim='valid_time') # type: ignore
+        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
     
     @deprecated("Use fetch_data_daily_single_levels instead")
     def temperature_2m_mean_gpd(self, bbox: tuple[float,float,float,float], time_ranges: list[tuple[datetime, datetime]], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame | None:
@@ -1166,7 +1166,7 @@ class DataClient():
                     )
 
                 # Merge Local
-                local_merged = xr.concat([ds_hist, ds_fut], dim="time", combine_attrs="override")
+                local_merged = xr.concat([ds_hist, ds_fut], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
 
                 # Fetch Global Mean Surface Temp (GMST)
                 if driving_model is not None:
@@ -1184,7 +1184,7 @@ class DataClient():
                             time_range=fut_range, experiment=exp_fut, temporal_resolution="monthly"
                         )
                         
-                        gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override")
+                        gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
                     
                     if analysis_type == 'cordex':
                         print(f"   -> Fetching GMST for {driving_model} (CMIP5)...")
@@ -1196,7 +1196,7 @@ class DataClient():
                                 model=driving_model, ensemble_member=ensemble, period=period
                             )
                             gmst_hist.append(chunk)
-                        gmst_hist = xr.concat(gmst_hist, dim="time")
+                        gmst_hist = xr.concat(gmst_hist, dim="time", data_vars=XR_CONCAT_DATA_VARS)
                         gmst_hist = gmst_hist.convert_calendar("standard", use_cftime=False)
                         gmst_hist = gmst_hist.interpolate_na(dim="time", method="linear")
                         # subset to hist_range
@@ -1210,12 +1210,12 @@ class DataClient():
                             )
                             gmst_fut.append(chunk)
                             
-                        gmst_fut = xr.concat(gmst_fut, dim="time")
+                        gmst_fut = xr.concat(gmst_fut, dim="time", data_vars=XR_CONCAT_DATA_VARS)
                         gmst_fut = gmst_fut.convert_calendar("standard", use_cftime=False)
                         gmst_fut = gmst_fut.interpolate_na(dim="time", method="linear")
                         # subset to fut_range
                         gmst_fut = gmst_fut.sel(time=slice(fut_range[0], fut_range[1]))
-                        gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override")
+                        gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
                 else:
                     print(f"   ⚠️ Skipping GMST: No driving model provided.")
                     gmst_merged = None
