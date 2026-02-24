@@ -4,7 +4,7 @@ from .cordex_client import *
 from .conversions import *
 from .variable import *
 
-from c3s_event_attribution_tools import XR_CONCAT_DATA_VARS
+from ..constants import XR_CONCAT_DATA_VARS
 
 import tempfile
 import os

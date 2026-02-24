@@ -6,7 +6,7 @@ import geopandas as gpd
 from typing import Tuple, Union, Literal, cast
 import numpy as np
 
-from c3s_event_attribution_tools import XR_CONCAT_DATA_VARS
+from .constants import XR_CONCAT_DATA_VARS
 
 from .data import conversions
 from .utils import Utils
