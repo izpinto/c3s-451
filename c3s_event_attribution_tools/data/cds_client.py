@@ -18,7 +18,7 @@ if __import__('sys').platform in ['linux']:
 class CDSClient():
     CDS_API_URL = "https://cds.climate.copernicus.eu/api"
     
-    def __init__(self, cds_key: str):
+    def __init__(self, cds_key: str, cache_directory: str | None = None):
         """
         Initialize the CDSClient with credentials for the Copernicus Climate Data Store.
 
@@ -32,6 +32,17 @@ class CDSClient():
         """
         self.cds_client = Client(self.CDS_API_URL, key=cds_key)
         
+        if cache_directory:
+            self.cache_directory = cache_directory
+        else:
+            self.cache_directory = tempfile.gettempdir()
+            
+    def _get_temp_dir(self) -> str:
+        
+        if not os.path.exists(self.cache_directory):
+            os.makedirs(self.cache_directory)
+            
+        return self.cache_directory
 
     def _build_request_monthly_averaged(self, variable: str, time_range: tuple[datetime, datetime], bbox: tuple[float, float, float, float]) -> dict:
         """
@@ -577,7 +588,7 @@ class CDSClient():
         req = self._build_request_cmip6(variable.cds_name(), model, time_range, bbox, experiment, temporal_resolution)
         req_hash = sha256(str(req).encode('utf-8')).hexdigest()
         # Fetch the temporary directory of the OS
-        temp_dir = tempfile.gettempdir()
+        temp_dir = self._get_temp_dir()
         temp_file_path = os.path.join(temp_dir, f"cds_cmip6_{req_hash}.nc")
         
         if not os.path.exists(temp_file_path):
@@ -658,7 +669,7 @@ class CDSClient():
         }
         
         zip_file_path = self._execute_cds_request(dataset, request)
-        temp_dir = tempfile.gettempdir()
+        temp_dir = self._get_temp_dir()
         req_hash = sha256(str(request).encode('utf-8')).hexdigest()
         temp_file_path = os.path.join(temp_dir, f"cds_cmip5_{req_hash}.nc")
         # If file exists, remove it
@@ -690,7 +701,7 @@ class CDSClient():
         hashable_request = str(request) + "=>" + dataset
         request_hash = sha256(hashable_request.encode('utf-8')).hexdigest()
         # Fetch the temporary directory of the OS
-        temp_dir = tempfile.gettempdir()
+        temp_dir = self._get_temp_dir()
         temp_file_path = os.path.join(temp_dir, f"cds_request_{request_hash}.nc")
         
         # Check if file already exists to avoid re-downloading

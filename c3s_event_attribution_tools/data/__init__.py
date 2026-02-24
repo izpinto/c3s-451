@@ -4,6 +4,12 @@ from .cordex_client import *
 from .conversions import *
 from .variable import *
 
+from c3s_event_attribution_tools import XR_CONCAT_DATA_VARS
+
+import tempfile
+import os
+
+
 try:
     # Available in Python 3.12+ as per PEP 702
     from warnings import deprecated
@@ -23,7 +29,7 @@ class DataClient():
         The other classes e.g. CDSClient, MarsClient etc. are used in this client class.
         
     """
-    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, cordex_arco_token : str | None = None) -> None:
+    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, cordex_arco_token : str | None = None, cache_directory: str | None = None) -> None:
         """
         Instantiate the DataClient by calling the constructor.
         
@@ -32,17 +38,32 @@ class DataClient():
             beacon_cache_url (str | None): Optional URL for the Beacon Cache service.
             beacon_token (str | None): Optional token for accessing the Beacon Cache.
             mars_key (str | None): Optional API key for accessing MARS data.
+            cache_directory (str | None): Optional directory path for caching data locally. If not provided, a default cache directory will be used.
         """
-        self.cds_client = CDSClient(cds_key)
+        self.cds_client = CDSClient(cds_key, cache_directory)
         self.beacon_cache = None
         self.mars_client = None
         self.cordex_client = None
+        
+        if cache_directory:
+            self.cache_directory = cache_directory
+        else:    
+            self.cache_directory = tempfile.gettempdir()
+        
+        if not os.path.exists(self.cache_directory):
+            os.makedirs(self.cache_directory)
+        
+        
         if beacon_cache_url:
             self.beacon_cache = BeaconClient(beacon_cache_url=beacon_cache_url, beacon_token=beacon_token)
         if mars_key:
             self.mars_client = MarsClient(key=mars_key)  # type: ignore for mars on non-linux platforms
         if cordex_arco_token:
             self.cordex_client = CordexClient(cordex_token=cordex_arco_token)
+            
+    
+            
+
     
     def _get_beacon_cache_daily_single_levels_gpd(
         self, 
@@ -83,7 +104,7 @@ class DataClient():
             # Merge adjusted_dss along longitude dimension
             dss.append(xr.merge(adjusted_dss, join="outer"))
 
-        return xr.concat(dss, dim='valid_time') # type: ignore
+        return xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
     
     def _get_cds_daily_data_single_levels_gpd(
         self,
@@ -1064,17 +1085,20 @@ class DataClient():
         results_gmst = {}
         processed_count = 0
 
+        # Defaults to surpress 'unbound variable' warnings
+        hist_periods = []
+        rcp_periods = []
+        ensemble = 'UnknownMember'
+        gmst_merged = None
+        
+        exp_hist = "historical"
+
         # Configuration based on Analysis Type
         if analysis_type == 'cmip6':
-            exp_hist = "historical"
             exp_fut  = "ssp5_8_5"
-            gmst_fetch_fn = self.fetch_cmip6_xr
-
             
         elif analysis_type == 'cordex':
-            exp_hist = "historical"
             exp_fut  = "rcp85"
-            gmst_fetch_fn = self.fetch_cmip5_monthly_single_levels_xr  # GMST comes from CMIP5 (Driver)
             
         else:
             raise ValueError("analysis_type must be 'cmip6' or 'cordex'")
@@ -1147,15 +1171,19 @@ class DataClient():
                 # Fetch Global Mean Surface Temp (GMST)
                 if driving_model is not None:
                     if analysis_type == 'cmip6':
+                        
                         print(f"   -> Fetching GMST for {driving_model}...")
-                        gmst_hist = gmst_fetch_fn(
+                        
+                        gmst_hist = self.fetch_cmip6_xr(
                             variable=Variable.CMIP6.near_surface_air_temperature, model=driving_model, bbox=(-180, -90, 180, 90),
                             time_range=hist_range, experiment="historical", temporal_resolution="monthly"
                         )
-                        gmst_fut = gmst_fetch_fn(
+                        
+                        gmst_fut = self.fetch_cmip6_xr(
                             variable=Variable.CMIP6.near_surface_air_temperature, model=driving_model, bbox=(-180, -90, 180, 90),
                             time_range=fut_range, experiment=exp_fut, temporal_resolution="monthly"
                         )
+                        
                         gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override")
                     
                     if analysis_type == 'cordex':
@@ -1163,7 +1191,7 @@ class DataClient():
                         gmst_hist = []
                         for period in hist_periods:
                             print(f"      - Historical Period: {period}")
-                            chunk = gmst_fetch_fn(
+                            chunk = self.fetch_cmip5_monthly_single_levels_xr(
                                 experiment="historical", variable=Variable.CMIP5Monthly.temperature_2m,
                                 model=driving_model, ensemble_member=ensemble, period=period
                             )
@@ -1175,13 +1203,13 @@ class DataClient():
                         gmst_hist = gmst_hist.sel(time=slice(hist_range[0], hist_range[1]))
                         gmst_fut = []
                         for period in rcp_periods:
-
                             print(f"      - RCP8.5 Period: {period}")
-                            chunk = gmst_fetch_fn(
+                            chunk = self.fetch_cmip5_monthly_single_levels_xr(
                                 experiment="rcp_8_5", variable=Variable.CMIP5Monthly.temperature_2m,
                                 model=driving_model, ensemble_member=ensemble, period=period
                             )
                             gmst_fut.append(chunk)
+                            
                         gmst_fut = xr.concat(gmst_fut, dim="time")
                         gmst_fut = gmst_fut.convert_calendar("standard", use_cftime=False)
                         gmst_fut = gmst_fut.interpolate_na(dim="time", method="linear")
@@ -1194,6 +1222,7 @@ class DataClient():
 
                 # Store Results 
                 results_local[model_id] = local_merged
+                
                 if gmst_merged is not None:
                     results_gmst[model_id] = gmst_merged
                 

@@ -135,8 +135,12 @@ class Utils:
 
 
     @staticmethod
-    def select_region(regionType:str, bbox:tuple[float, float, float, float]|None=None,
-                    overlays:dict[str, str]|None=None, params:Dict[str, Any]=None):
+    def select_region(
+        regionType: str, 
+        bbox: tuple[float, float, float, float]|None = None,
+        overlays: dict[str, str]|None = None, 
+        params: None|Dict[str, Any] = None
+    ):
         '''
         Initiates a web-based geographical region selection tool and retrieves the selected polygon.
 
@@ -592,13 +596,15 @@ class Utils:
             return gdf
 
     @staticmethod
-    def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
-                date_range:tuple[datetime, datetime]|None=None,
-                year_range:tuple[int, int]|None=None,
-                month_range:tuple[int, int]|None=None,
-                doy_range:tuple[int, int]|None=None,
-                study_region:gpd.GeoDataFrame|None=None
-                ) -> gpd.GeoDataFrame:
+    def subset_gdf(
+        gdf: gpd.GeoDataFrame, 
+        datetime_col: str|None = None,
+        date_range: tuple[datetime, datetime]|None = None,
+        year_range: tuple[int, int]|None = None,
+        month_range: tuple[int, int]|None = None,
+        doy_range: tuple[int, int]|None = None,
+        study_region: gpd.GeoDataFrame|None = None
+    ) -> gpd.GeoDataFrame:
         '''
         Creates a subset of a GeoDataFrame by applying various spatio-temporal filters.
 
@@ -645,6 +651,7 @@ class Utils:
 
         if study_region is not None:
             gdf = Utils.select_study_region_gdf(gdf, study_region)
+            
             if gdf.empty: 
                 warnings.warn(message="The resulting GeoDataFrame is empty after applying the `studyregion` filter.", stacklevel=2)
 
@@ -668,12 +675,12 @@ class Utils:
         Returns:
             gpd.GeoDataFrame: A copy of the input GeoDataFrame with the datetime column shifted.
         '''
-        direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
+        n_direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
 
         gdf = gdf.copy()
 
         gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * direction
+        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * n_direction
 
         return gdf
 
@@ -707,9 +714,11 @@ class Utils:
 
 
     @staticmethod
-    def get_seasonal_cycle_plot_values(data:gpd.GeoDataFrame, datetime_col:str='valid_time',
-                                       month_range:tuple[int, int]=(1,12)
-                                       ) -> tuple[gpd.GeoDataFrame, pd.Index, pd.DatetimeIndex]:
+    def get_seasonal_cycle_plot_values(
+        data: gpd.GeoDataFrame, 
+        datetime_col: str='valid_time',
+        month_range: tuple[int, int]=(1,12)
+    ) -> tuple[gpd.GeoDataFrame, pd.Index, pd.DatetimeIndex]:
         '''
         Prepares a GeoDataFrame for seasonal cycle plotting by adjusting datetime values for correct chronological ordering across month boundaries.
 
@@ -943,7 +952,7 @@ class Utils:
         return "Bad", summary   
 
     @staticmethod
-    def extract_results(parameter, df, df_res, df_obs, dist, conf):
+    def extract_results(parameter:str, df: pd.DataFrame, df_res: pd.DataFrame, df_obs: pd.DataFrame, dist: str, conf: str):
         """ 
         Compare model validation results with observations and update the DataFrame.
         df: DataFrame to update (model hub)
@@ -975,6 +984,11 @@ class Utils:
                 return None
             
         active_params = []
+        
+        obs_sigma = None
+        obs_shape = None
+        obs_disp = None
+        
         if dist == "gev":
             active_params.append("shape")
             obs_shape = get_obs_dict(df_obs, 'shape')
