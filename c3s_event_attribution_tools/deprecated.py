@@ -16,6 +16,7 @@ import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 from datetime import datetime, timedelta
 from typing import Union, Literal
+from .utils import Utils
 
 
 
@@ -82,7 +83,7 @@ def deprecated_n_day_accumulations_gdf(data, value_col, parameter, event_date, l
 
         # Highlight date window
         ylim = ax.get_ylim()
-        print(ylim)
+        Utils.print(ylim)
 
         dayofyear = pd.to_datetime(event_date).dayofyear
         ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000,

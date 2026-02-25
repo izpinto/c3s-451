@@ -17,6 +17,8 @@ import warnings
 from shapely.geometry import Polygon
 import matplotlib
 
+from .utils import Utils
+
 # iris doesnt work on windows
 try:
     import iris
@@ -24,7 +26,8 @@ try:
     import iris.coord_categorisation # type: ignore
     import iris.util # type: ignore
 except ImportError:
-    print("cant import iris, are you on windows?")
+    Utils.print("cant import iris, are you on windows?")
+    
 
 
 
@@ -118,7 +121,7 @@ class Analogues:
             day = int(date_list[each][-2:])
             NEXT_FIELD = Analogues.pull_out_day_era(cube, year, month, day)
             if NEXT_FIELD == None:
-                print('Field failure for: ',+each)
+                Utils.print('Field failure for: ',+each)
                 n = n-1
             else:
                 if FIELD == 0:
@@ -217,7 +220,7 @@ class Analogues:
         elif isinstance(cube_list, iris.cube.CubeList):
             reg_cubes = iris.cube.CubeList([])
             for each in range(len(cube_list)):
-                # print(each)
+                # Utils.print(each)
                 subset = cube_list[each].extract(const_lat)
                 reg_cubes.append(subset.intersection(longitude=(region[3], region[2])))
                 
@@ -283,7 +286,7 @@ class Analogues:
         try:
             cube = cubes[0]
         except:
-            print("Error reading cubes for %s", var)
+            Utils.print("Error reading cubes for %s", var)
             raise FileNotFoundError
         iris.coord_categorisation.add_year(cube, 'time')
         cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
@@ -491,7 +494,7 @@ class Analogues:
         date_list = []
         time_list = []
         for i in np.arange(N):
-            #print(i)
+            #Utils.print(i)
             I = np.sort(D)[i]
             for n, each in enumerate(D):
                 if I == each:
@@ -543,7 +546,7 @@ class Analogues:
         try:
             return psi_day
         except NameError:
-            print('ERROR: Date not in data')
+            Utils.print('ERROR: Date not in data')
             return
 
     @staticmethod
@@ -607,7 +610,7 @@ class Analogues:
             day = int(date_list[each][-2:])
             NEXT_FIELD = Analogues.pull_out_day_era(psi, year, month, day)
             if NEXT_FIELD == None:
-                print('Field failure for: ',+each)
+                Utils.print('Field failure for: ',+each)
                 n = n-1
             else:
                 if FIELD == 0:
@@ -633,7 +636,7 @@ class Analogues:
         '''
 
         filename = Analogues.find_reanalysis_filename(var)
-        # print("Read file: {} for date {}".format(filename,date))
+        # Utils.print("Read file: {} for date {}".format(filename,date))
         cube = iris.load(filename, var)[0]
         cube = Analogues.extract_date(cube,date[0],date[1],date[2])
         return cube
@@ -712,7 +715,7 @@ class Analogues:
         sig_field = field_list1[0].data
         a, b = np.shape(field_list1[0].data)
         for i in range(a):
-            # print(i)
+            # Utils.print(i)
             for j in range(b):
                 loc_list1 = []; loc_list2 = []
                 for R in range(n):
@@ -756,7 +759,7 @@ class Analogues:
         sig_field = field_list[0].data
         a, b = np.shape(field_list[0].data)
         for i in range(a):
-            # print(i)
+            # Utils.print(i)
             for j in range(b):
                 loc_list = []
                 for R in range(n):
@@ -819,7 +822,7 @@ class Analogues:
             day = int(date_list[each][-2:])
             NEXT_FIELD = Analogues.pull_out_day_era(cube, year, month, day)
             if NEXT_FIELD == None:
-                print('Field failure for: ',+each)
+                Utils.print('Field failure for: ',+each)
                 n = n-1
             x.append(NEXT_FIELD)
         return x
@@ -961,7 +964,7 @@ class Analogues:
         try:
             cube = cubes[0]
         except:
-            print("Error reading cubes for %s", var)
+            Utils.print("Error reading cubes for %s", var)
             raise FileNotFoundError
         iris.coord_categorisation.add_year(cube, 'time')
         cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell <= Y2))
@@ -985,7 +988,7 @@ class Analogues:
         try:
             cube = cubes[0]
         except:
-            print("Error reading cubes for %s", path)
+            Utils.print("Error reading cubes for %s", path)
             raise FileNotFoundError
         return cube
     
@@ -1022,7 +1025,7 @@ class Analogues:
         '''
 
         filename = Analogues.find_reanalysis_filename_v2(var)
-        # print("Read file: {} for date {}".format(filename,date))
+        # Utils.print("Read file: {} for date {}".format(filename,date))
         cube = iris.load(filename, var)[0]
         cube = Analogues.extract_date(cube,date[0],date[1],date[2])
         return cube
@@ -1150,7 +1153,7 @@ class Analogues:
         date_list = []
 
         for i in np.arange(N):
-            #print(i)
+            #Utils.print(i)
             I = np.sort(D)[i]
             for n, each in enumerate(D):
                 if I == each:
@@ -1790,8 +1793,8 @@ class Analogues:
                 con_lev = np.arange(0, vmax / 2, 0.2)
             # =====================================================================================
 
-            # #J : test print
-            # print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
+            # #J : test Utils.print
+            # Utils.print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
             # ##############
 
             if con_lev.size < 2:
@@ -1799,7 +1802,7 @@ class Analogues:
                 vmax = np.nanmax(event_cube.data)
 
                 if not np.isfinite(vmin) or not np.isfinite(vmax):
-                    print(f"Skipping {var}: invalid data")
+                    Utils.print(f"Skipping {var}: invalid data")
                     continue
                 
                 if vmin == vmax:
@@ -1807,8 +1810,8 @@ class Analogues:
 
                 con_lev = np.linspace(vmin, vmax, 5)
 
-            # #J : test print
-            # print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
+            # #J : test Utils.print
+            # Utils.print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
             # ##############
 
             # Plotting event
@@ -2165,9 +2168,9 @@ class Analogues:
             month = calendar.month_abbr[int(dates[each][4:-2])]
             day = int(dates[each][-2:])
 
-            # print(ana_var, [year, month, day])
+            # Utils.print(ana_var, [year, month, day])
             circ_vals.append(Analogues.extract_region(Analogues.extract_date_v2(cube_map[ana_var], [year, month, day]), region))
-            # print(haz_var, [year, month, day])
+            # Utils.print(haz_var, [year, month, day])
             haz_vals.append(Analogues.extract_region(Analogues.extract_date_v2(cube_map[haz_var], [year, month, day]), region))
 
         return circ_vals, haz_vals, n

@@ -592,7 +592,7 @@ class CDSClient():
         temp_file_path = os.path.join(temp_dir, f"cds_cmip6_{req_hash}.nc")
         
         if not os.path.exists(temp_file_path):
-            print("Downloading CMIP6 data from CDS, this may take a while...")
+            Utils.print("Downloading CMIP6 data from CDS, this may take a while...")
             zip_path = os.path.join(temp_dir, f"cds_cmip6_{req_hash}.zip")
             # download as zip and extract
             self.cds_client.retrieve(
@@ -609,7 +609,7 @@ class CDSClient():
                     os.rename(extracted_path, temp_file_path)
                     break
         else:
-            print("Using locally cached CMIP6 data from CDS.")
+            Utils.print("Using locally cached CMIP6 data from CDS.")
         return temp_file_path
         
     def fetch_cmip6_xr(self, variable: Variable.CMIP6, model: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime], experiment: str = "ssp5_8_5", temporal_resolution: str = "daily") -> xr.Dataset:
@@ -706,12 +706,12 @@ class CDSClient():
         
         # Check if file already exists to avoid re-downloading
         if not os.path.exists(temp_file_path) or no_cache:
-            print(f"Downloading data from CDS for '{dataset}', this may take a while...")
+            Utils.print(f"Downloading data from CDS for '{dataset}', this may take a while...")
             self.cds_client.retrieve(
                     dataset,
                     request
                 ).download(target=temp_file_path)
         else:
-            print(f"Using locally cached data from CDS for '{dataset}'.")
+            Utils.print(f"Using locally cached data from CDS for '{dataset}'.")
         
         return temp_file_path

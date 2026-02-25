@@ -1,4 +1,5 @@
 from datetime import timedelta
+import inspect
 import requests
 import numpy as np
 from shapely.geometry import Polygon
@@ -20,6 +21,26 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output
 
 class Utils:
+    @staticmethod
+    def print(*args, **kwargs):
+        # 1. Get current timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")[:-3] # Include milliseconds, but remove last 3 digits to get microseconds to milliseconds precision
+        
+        # 2. Inspect the stack
+        # stack[1] is the caller of this function
+        caller = inspect.stack()[1]
+        filename = '' # Disabled because will show hash in jupyter caller.filename.split('/')[-1] # Just the file name, not full path
+        func_name = caller.function
+        line_no = caller.lineno
+        
+        # 3. Format the metadata
+        prefix = f"[{timestamp}] [{filename}:{line_no} @ {func_name}]"
+        
+        # 4. Call the real Utils.print
+        # We put the prefix first, then the original arguments
+        __builtins__.print(prefix, *args, **kwargs)
+    
+    
     """Utility class for various geospatial & temporal data operations, including region selection and data manipulation, splitting time ranges, etc."""
 
     @staticmethod
@@ -184,7 +205,7 @@ class Utils:
         if regionType not in allowed_region_types:
             raise ValueError(f"Invalid regionType '{regionType}'. Allowed values are: {allowed_region_types}")
         
-        print('The region picker will shortly open in your web browser. Please select a region, close the browser tab and return to the notebook when done.')
+        Utils.print('The region picker will shortly open in your web browser. Please select a region, close the browser tab and return to the notebook when done.')
         
         url = f"https://event-attribution.copernicus-climate.eu/region-picker/start-m2m/{regionType}"
 
@@ -197,19 +218,19 @@ class Utils:
         
         if response.status_code == 200:
             data = response.json()
-            print(f"Region Picker started successfully for {regionType}:")
-            print(f"Open the following page in your browser to select a region: ")
-            print(f"\t\t{data['url']}")
+            Utils.print(f"Region Picker started successfully for {regionType}:")
+            Utils.print(f"Open the following page in your browser to select a region: ")
+            Utils.print(f"\t\t{data['url']}")
             webbrowser.open(data['url'])
             poll_url = data['poll_url']
         else:
-            print(f"Failed to start Region Picker for {regionType}. Status code: {response.status_code}")
-            print(f"Response: {response.text}")
+            Utils.print(f"Failed to start Region Picker for {regionType}. Status code: {response.status_code}")
+            Utils.print(f"Response: {response.text}")
         
         result = None
         
         if poll_url:
-            print(f"Polling for region selection...")
+            Utils.print(f"Polling for region selection...")
             
             done = False
             
@@ -221,14 +242,14 @@ class Utils:
                         done = True
                         result = data['result']
                 else:
-                    print(f"Failed to poll Region Picker for {regionType}. Status code: {response.status_code}")
-                    print(f"Response: {response.text}")
+                    Utils.print(f"Failed to poll Region Picker for {regionType}. Status code: {response.status_code}")
+                    Utils.print(f"Response: {response.text}")
                     break
             
-            print("Region selection process done.")
+            Utils.print("Region selection process done.")
         
-        print("Received polygon data:")
-        print(result)
+        Utils.print("Received polygon data:")
+        Utils.print(result)
 
         return result
 
@@ -917,7 +938,7 @@ class Utils:
                 df_dict[name] = df
 
             except Exception as e:
-                print(f"Error converting model '{name}': {e}")
+                Utils.print(f"Error converting model '{name}': {e}")
                 continue
 
         return df_dict
@@ -980,7 +1001,7 @@ class Utils:
                     'upper': df.loc['era5', f'{param_prefix}_upper']
                 }
             except KeyError:
-                print(f"⚠️  Note: Parameter '{param_prefix}' not found in observations. Skipping.")
+                Utils.print(f"⚠️  Note: Parameter '{param_prefix}' not found in observations. Skipping.")
                 return None
             
         active_params = []
@@ -1278,9 +1299,9 @@ class Utils:
                 
                 if save_path:
                     df_validation.to_csv(save_path, index=False)
-                    print(f"✅ Changes saved to memory AND disk: {save_path}")
+                    Utils.print(f"✅ Changes saved to memory AND disk: {save_path}")
                 else:
-                    print(f"✅ Changes saved to memory")
+                    Utils.print(f"✅ Changes saved to memory")
 
         save_button.on_click(on_save_clicked)
         
@@ -1345,7 +1366,7 @@ class Utils:
         try:
             return PARAMETER_CONFIG.get(parameter)
         except Exception as e:
-            print(f"Error retrieving parameter config for {parameter}: {e}")
+            Utils.print(f"Error retrieving parameter config for {parameter}: {e}")
             return None
 
     @staticmethod

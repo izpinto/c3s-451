@@ -81,7 +81,7 @@ class Process:
 
                 # skip if center_date not in gdf
                 if pd.Timestamp(center_date) not in gdf[datetime_col].values:
-                    print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
+                    Utils.print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
                     continue
 
                 # range should never exceed data range
@@ -492,7 +492,7 @@ class Process:
             if lat_col not in df.coords:
                 raise ValueError(f"Latitude coordinate '{lat_col}' not found")
             
-            print ("Calculating weights for xarray DataArray/Dataset...")
+            Utils.print ("Calculating weights for xarray DataArray/Dataset...")
             
             weights = xr.DataArray(np.cos(np.deg2rad(df[lat_col])), dims=lat_col)
 
@@ -505,7 +505,7 @@ class Process:
             if lat_col not in df.columns:
                 raise ValueError(f"Latitude coordinate '{lat_col}' not found")
 
-            print ("Calculating weights for GeoDataFrame...")
+            Utils.print ("Calculating weights for GeoDataFrame...")
             
             weights = np.cos(np.deg2rad(df[lat_col]))
 
@@ -1156,7 +1156,7 @@ class Process:
                 items_to_process.append((label, entry["experiment_data"], entry))
 
         for label, ds, original_entry in items_to_process:
-            print(f"Processing: {label}")
+            Utils.print(f"Processing: {label}")
             try:
                 # Extract Variable & Unit Conversion
                 da = ds[parameter]
@@ -1267,11 +1267,11 @@ class Process:
                 results["time_series"][label] = tsfinal_out
                 results["processed"].append(original_entry)
                 
-                print(f"{label} Processed successfully.")
+                Utils.print(f"{label} Processed successfully.")
 
             except Exception as exc:
                 results["dropped"].append(original_entry)
-                print(f"ERROR: {label} Failed: {exc}")
+                Utils.print(f"ERROR: {label} Failed: {exc}")
                 continue
 
         return results
@@ -1291,7 +1291,7 @@ class Process:
         results: dict[str, gpd.GeoDataFrame] = {}
         
         for model_name, ds in gmst_dict.items():
-            print(f"Calculating GMST anomalies for: {model_name}")
+            Utils.print(f"Calculating GMST anomalies for: {model_name}")
             try:
                 # Extract variable and convert units
                 da = ds['tas']
@@ -1332,13 +1332,13 @@ class Process:
                     ref_val = df_subset.loc[df_subset["year"] == event_year, "gmst"].values[0]  # pyright: ignore[reportAttributeAccessIssue]
                     df_subset["gmst"] = df_subset["gmst"] - ref_val
                     results[model_name] = df_subset
-                    print(f"SUCCES: GMST anomaly calculated (Ref {event_year}: {ref_val:.2f}°C)")
+                    Utils.print(f"SUCCES: GMST anomaly calculated (Ref {event_year}: {ref_val:.2f}°C)")
                 except IndexError:
-                    print(f"WARNING: Event year {event_year} not found in model {model_name} range.")
+                    Utils.print(f"WARNING: Event year {event_year} not found in model {model_name} range.")
                     continue
 
             except Exception as e:
-                print(f"ERROR: Failed to process GMST for {model_name}: {e}")
+                Utils.print(f"ERROR: Failed to process GMST for {model_name}: {e}")
                 
         return results
     

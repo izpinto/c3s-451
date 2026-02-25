@@ -73,7 +73,7 @@ class DataClient():
         time_ranges: list[tuple[datetime,datetime]],
         variable: Variable.ERA5DailySingleLevel) -> gpd.GeoDataFrame | None:
         if self.beacon_cache is None:
-            print("Beacon Cache client not initialized")
+            Utils.print("Beacon Cache client not initialized")
             return None
         
         adjusted_bboxes = Conversions.convert_bbox_to_0_360(bbox)
@@ -93,7 +93,7 @@ class DataClient():
         variable: Variable.ERA5DailySingleLevel
     ) -> xr.Dataset | None:
         if self.beacon_cache is None:
-            print("Beacon Cache client not initialized")
+            Utils.print("Beacon Cache client not initialized")
             return None
         
         dss: List[xr.Dataset] = []
@@ -137,7 +137,7 @@ class DataClient():
         
         all_gdfs = []
         for time_range in time_ranges:
-            print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
+            Utils.print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
             
             gdfs = []
             min_retrieved_time = None
@@ -151,13 +151,13 @@ class DataClient():
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
                 # No valid data found in beacon cache or we are missing data for the requested time range
-                print("Missing data in beacon cache, fetching missing data from CDS...")
+                Utils.print("Missing data in beacon cache, fetching missing data from CDS...")
 
                 if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                     # Request missing data from CDS
                     fetch_start = time_range[0]
                     fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_single_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     gdf_cds = gdf_cds.rename(columns=variable.cds_variable_renames())
                     max_retrieved_time = gdf_cds['valid_time'].max()
@@ -167,7 +167,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_single_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     gdf_cds = gdf_cds.rename(columns=variable.cds_variable_renames())
                     gdfs.append(gdf_cds)
@@ -188,7 +188,7 @@ class DataClient():
         all_dss: List[xr.Dataset] = []
         for time_range in time_ranges:
             
-            print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
+            Utils.print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
             
             dss: List[xr.Dataset] = []
             min_retrieved_time = None
@@ -202,13 +202,13 @@ class DataClient():
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > np.datetime64(time_range[0]) or max_retrieved_time < np.datetime64(time_range[1]):
                 # No valid data found in beacon cache or we are missing data for the requested time range
-                print("Missing data in beacon cache, fetching missing data from CDS...")
+                Utils.print("Missing data in beacon cache, fetching missing data from CDS...")
 
                 if min_retrieved_time is None or min_retrieved_time > np.datetime64(time_range[0]):
                     # Request missing data from CDS
                     fetch_start = time_range[0]
                     fetch_end = pd.to_datetime(min_retrieved_time).to_pydatetime() if min_retrieved_time is not None else time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     max_retrieved_time = ds_cds['valid_time'].values.max()
                     dss.append(ds_cds)
@@ -217,7 +217,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     dss.append(ds_cds)
         
@@ -233,7 +233,7 @@ class DataClient():
         levels: list[int],
         ) -> gpd.GeoDataFrame | None:
         if self.beacon_cache is None:
-            print("Beacon Cache client not initialized")
+            Utils.print("Beacon Cache client not initialized")
             return None
         
         adjusted_bboxes = Conversions.convert_bbox_to_0_360(bbox)
@@ -254,7 +254,7 @@ class DataClient():
         levels: list[int],
         ) -> xr.Dataset | None:
         if self.beacon_cache is None:
-            print("Beacon Cache client not initialized")
+            Utils.print("Beacon Cache client not initialized")
             return None
         
         adjusted_bboxes = Conversions.convert_bbox_to_0_360(bbox)
@@ -298,7 +298,7 @@ class DataClient():
         ) -> gpd.GeoDataFrame | None:
         all_gdfs = []
         for time_range in time_ranges:
-            print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
+            Utils.print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
             
             gdfs = []
             min_retrieved_time = None
@@ -312,13 +312,13 @@ class DataClient():
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
                 # No valid data found in beacon cache or we are missing data for the requested time range
-                print("Missing data in beacon cache, fetching missing data from CDS...")
+                Utils.print("Missing data in beacon cache, fetching missing data from CDS...")
 
                 if min_retrieved_time is None or min_retrieved_time > time_range[0]:
                     # Request missing data from CDS
                     fetch_start = time_range[0]
                     fetch_end = min_retrieved_time if min_retrieved_time is not None else time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_pressure_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     max_retrieved_time = gdf_cds['valid_time'].max()
                     gdfs.append(gdf_cds)
@@ -327,7 +327,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_pressure_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     gdfs.append(gdf_cds)
         
@@ -347,7 +347,7 @@ class DataClient():
         all_dss: List[xr.Dataset] = []
         for time_range in time_ranges:
             
-            print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
+            Utils.print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
             
             dss: List[xr.Dataset] = []
             
@@ -363,13 +363,13 @@ class DataClient():
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > np.datetime64(time_range[0]) or max_retrieved_time < np.datetime64(time_range[1]):
                 # No valid data found in beacon cache or we are missing data for the requested time range
-                print("Missing data in beacon cache, fetching missing data from CDS...")
+                Utils.print("Missing data in beacon cache, fetching missing data from CDS...")
 
                 if min_retrieved_time is None or min_retrieved_time > np.datetime64(time_range[0]):
                     # Request missing data from CDS
                     fetch_start = time_range[0]
                     fetch_end = pd.to_datetime(min_retrieved_time).to_pydatetime() if min_retrieved_time is not None else time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     max_retrieved_time = ds_cds['valid_time'].values.max()
                     dss.append(ds_cds)
@@ -378,7 +378,7 @@ class DataClient():
                     # Request missing data from CDS
                     fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
-                    print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
+                    Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     dss.append(ds_cds)
         
@@ -1113,7 +1113,7 @@ class DataClient():
         else:
             raise ValueError("analysis_type must be 'cmip6' or 'cordex'")
 
-        print(f"\n--- Starting {analysis_type.upper()} Processing (Exp: {exp_fut}) ---")
+        Utils.print(f"\n--- Starting {analysis_type.upper()} Processing (Exp: {exp_fut}) ---")
 
         gcm_map = Utils.get_gcm_cordex_to_cmip5()
         # 2. Main Loop
@@ -1148,11 +1148,11 @@ class DataClient():
 
                 # 3. Explicit check if the mapping failed
                 if not driving_model:
-                    print(f"⚠️ Skipping {model_id}: Driving GCM '{gcm}' not found in CMIP5 mapping.")
+                    Utils.print(f"⚠️ Skipping {model_id}: Driving GCM '{gcm}' not found in CMIP5 mapping.")
                     continue
 
             try:
-                print(f"Processing: {model_id}...")
+                Utils.print(f"Processing: {model_id}...")
 
                 # Fetch Local Variable (The Study Data)
                 if analysis_type == 'cmip6':
@@ -1182,7 +1182,7 @@ class DataClient():
                 if driving_model is not None:
                     if analysis_type == 'cmip6':
                         
-                        print(f"   -> Fetching GMST for {driving_model}...")
+                        Utils.print(f"   -> Fetching GMST for {driving_model}...")
                         
                         gmst_hist_cmip6 = self.fetch_cmip6_xr(
                             variable=Variable.CMIP6.near_surface_air_temperature, model=driving_model, bbox=(-180, -90, 180, 90),
@@ -1197,11 +1197,11 @@ class DataClient():
                         gmst_merged = xr.concat([gmst_hist_cmip6, gmst_fut_cmip6], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
                     
                     if analysis_type == 'cordex':
-                        print(f"   -> Fetching GMST for {driving_model} (CMIP5)...")
+                        Utils.print(f"   -> Fetching GMST for {driving_model} (CMIP5)...")
                         
                         gmst_hist_cordex_datasets: List[xr.Dataset] = []
                         for period in hist_periods:
-                            print(f"      - Historical Period: {period}")
+                            Utils.print(f"      - Historical Period: {period}")
                             chunk = self.fetch_cmip5_monthly_single_levels_xr(
                                 experiment="historical", variable=Variable.CMIP5Monthly.temperature_2m,
                                 model=driving_model, ensemble_member=ensemble, period=period
@@ -1216,7 +1216,7 @@ class DataClient():
                         
                         gmst_fut_cordex_datasets: List[xr.Dataset] = []
                         for period in rcp_periods:
-                            print(f"      - RCP8.5 Period: {period}")
+                            Utils.print(f"      - RCP8.5 Period: {period}")
                             chunk = self.fetch_cmip5_monthly_single_levels_xr(
                                 experiment="rcp_8_5", variable=Variable.CMIP5Monthly.temperature_2m,
                                 model=driving_model, ensemble_member=ensemble, period=period
@@ -1231,7 +1231,7 @@ class DataClient():
                         
                         gmst_merged = xr.concat([gmst_hist_cordex, gmst_fut_cordex], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
                 else:
-                    print(f"   ⚠️ Skipping GMST: No driving model provided.")
+                    Utils.print(f"   ⚠️ Skipping GMST: No driving model provided.")
                     gmst_merged = None
 
                 # Store Results 
@@ -1241,10 +1241,12 @@ class DataClient():
                     results_gmst[model_id] = gmst_merged
                 
                 processed_count += 1
-                print(f"   ✅ Success: {model_id}")
+                Utils.print(f"   ✅ Success: {model_id}")
 
             except Exception as e:
-                print(f"   ❌ Failed {model_id}: {str(e)}")
+                Utils.print(f"   ❌ Failed {model_id}: {str(e)}")
                 continue
+
+        Utils.print(f"\n--- Completed {analysis_type.upper()} Processing: {processed_count} models processed ---")
 
         return results_local, results_gmst
