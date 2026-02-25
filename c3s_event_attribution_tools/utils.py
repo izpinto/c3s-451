@@ -38,7 +38,7 @@ class Utils:
         
         # 4. Call the real Utils.print
         # We put the prefix first, then the original arguments
-        __builtins__.print(prefix, *args, **kwargs)
+        print(prefix, *args, **kwargs)
     
     
     """Utility class for various geospatial & temporal data operations, including region selection and data manipulation, splitting time ranges, etc."""
