@@ -1274,6 +1274,8 @@ class Process:
                 Utils.print(f"ERROR: {label} Failed: {exc}")
                 continue
 
+        Utils.print(f"Processing complete. {len(results['processed'])} succeeded, {len(results['dropped'])} dropped.")
+
         return results
     
     @staticmethod
