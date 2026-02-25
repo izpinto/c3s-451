@@ -1,3 +1,5 @@
+from typing import List
+
 from .beacon_client import *
 from .cds_client import *
 from .cordex_client import *
@@ -88,15 +90,19 @@ class DataClient():
         self,
         bbox: tuple[float,float,float,float],
         time_ranges: list[tuple[datetime,datetime]],
-        variable: Variable.ERA5DailySingleLevel) -> xr.Dataset | None:
+        variable: Variable.ERA5DailySingleLevel
+    ) -> xr.Dataset | None:
         if self.beacon_cache is None:
             print("Beacon Cache client not initialized")
             return None
         
-        dss = []
+        dss: List[xr.Dataset] = []
+        
         adjusted_bboxes = Conversions.convert_bbox_to_0_360(bbox)
+        
         for range in time_ranges:
-            adjusted_dss = []
+            adjusted_dss: List[xr.Dataset] = []
+            
             for adj_bbox in adjusted_bboxes:
                 ds = self.beacon_cache.fetch_from_era5_daily_single_levels_xr(adj_bbox, range, variable)
                 adjusted_dss.append(ds)
@@ -104,7 +110,7 @@ class DataClient():
             # Merge adjusted_dss along longitude dimension
             dss.append(xr.merge(adjusted_dss, join="outer"))
 
-        return xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
+        return xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
     
     def _get_cds_daily_data_single_levels_gpd(
         self,
@@ -179,12 +185,12 @@ class DataClient():
         variable: Variable.ERA5DailySingleLevel,
         ) -> xr.Dataset | None:
         
-        all_dss = []
+        all_dss: List[xr.Dataset] = []
         for time_range in time_ranges:
             
             print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
             
-            dss = []
+            dss: List[xr.Dataset] = []
             min_retrieved_time = None
             max_retrieved_time = None
             if self.beacon_cache is not None:
@@ -215,9 +221,9 @@ class DataClient():
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     dss.append(ds_cds)
         
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) # type: ignore
+            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) 
         
-        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
+        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
     
     def _get_beacon_cache_daily_pressure_levels_gpd(
         self,
@@ -253,16 +259,17 @@ class DataClient():
         
         adjusted_bboxes = Conversions.convert_bbox_to_0_360(bbox)
         
-        dss = []
+        dss: List[xr.Dataset] = []
+        
         for range in time_ranges:
-            adjusted_dss = []
+            adjusted_dss: List[xr.Dataset] = []
             for adj_bbox in adjusted_bboxes:
                 ds = self.beacon_cache.fetch_from_era5_daily_pressure_levels_xr(adj_bbox, range, variable.beacon_name(), levels)
                 adjusted_dss.append(ds)
             # Merge adjusted_dss along longitude dimension
             dss.append(xr.merge(adjusted_dss, join="outer"))
         
-        return xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
+        return xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
     
     def _get_cds_daily_data_pressure_levels_gpd(
         self,
@@ -337,14 +344,16 @@ class DataClient():
         levels: list[int],
         ) -> xr.Dataset | None:
                 
-        all_dss = []
+        all_dss: List[xr.Dataset] = []
         for time_range in time_ranges:
             
             print(f"Fetching data for range: {time_range[0]} - {time_range[1]}")
             
-            dss = []
+            dss: List[xr.Dataset] = []
+            
             min_retrieved_time = None
             max_retrieved_time = None
+            
             if self.beacon_cache is not None:
                 ds = self._get_beacon_cache_daily_pressure_levels_xr(bbox, [time_range], variable, levels)
                 if ds is not None and 'valid_time' in ds:
@@ -373,9 +382,9 @@ class DataClient():
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     dss.append(ds_cds)
         
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) # type: ignore
+            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS))
         
-        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS) # type: ignore
+        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
     
     @deprecated("Use fetch_data_daily_single_levels instead")
     def temperature_2m_mean_gpd(self, bbox: tuple[float,float,float,float], time_ranges: list[tuple[datetime, datetime]], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame | None:
@@ -1061,7 +1070,8 @@ class DataClient():
             experiment, variable, model, ensemble_member, period
         )
 
-    def fetch_climate_scenarios(self,
+    def fetch_climate_scenarios(
+        self,
         analysis_type,
         models, 
         variable_name, 
@@ -1070,7 +1080,7 @@ class DataClient():
         fut_range=(datetime(2006, 1, 1), datetime(2100, 12, 31)),
         temp_res="daily",
         max_models=None
-    ):
+    ) -> tuple[dict[str, xr.Dataset|xr.DataTree], dict[str, xr.Dataset|xr.DataTree]]:
         """
         Unified fetcher for CMIP6 and CORDEX data.
         
@@ -1081,8 +1091,8 @@ class DataClient():
             If 'cordex': List of dictionaries containing {'hist_url', 'rcp85_url', 'driving_model'}.
         """
         
-        results_local = {}
-        results_gmst = {}
+        results_local: dict[str, xr.Dataset|xr.DataTree] = {}
+        results_gmst: dict[str, xr.Dataset|xr.DataTree] = {}
         processed_count = 0
 
         # Defaults to surpress 'unbound variable' warnings
@@ -1174,48 +1184,52 @@ class DataClient():
                         
                         print(f"   -> Fetching GMST for {driving_model}...")
                         
-                        gmst_hist = self.fetch_cmip6_xr(
+                        gmst_hist_cmip6 = self.fetch_cmip6_xr(
                             variable=Variable.CMIP6.near_surface_air_temperature, model=driving_model, bbox=(-180, -90, 180, 90),
                             time_range=hist_range, experiment="historical", temporal_resolution="monthly"
                         )
                         
-                        gmst_fut = self.fetch_cmip6_xr(
+                        gmst_fut_cmip6 = self.fetch_cmip6_xr(
                             variable=Variable.CMIP6.near_surface_air_temperature, model=driving_model, bbox=(-180, -90, 180, 90),
                             time_range=fut_range, experiment=exp_fut, temporal_resolution="monthly"
                         )
                         
-                        gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
+                        gmst_merged = xr.concat([gmst_hist_cmip6, gmst_fut_cmip6], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
                     
                     if analysis_type == 'cordex':
                         print(f"   -> Fetching GMST for {driving_model} (CMIP5)...")
-                        gmst_hist = []
+                        
+                        gmst_hist_cordex_datasets: List[xr.Dataset] = []
                         for period in hist_periods:
                             print(f"      - Historical Period: {period}")
                             chunk = self.fetch_cmip5_monthly_single_levels_xr(
                                 experiment="historical", variable=Variable.CMIP5Monthly.temperature_2m,
                                 model=driving_model, ensemble_member=ensemble, period=period
                             )
-                            gmst_hist.append(chunk)
-                        gmst_hist = xr.concat(gmst_hist, dim="time", data_vars=XR_CONCAT_DATA_VARS)
-                        gmst_hist = gmst_hist.convert_calendar("standard", use_cftime=False)
-                        gmst_hist = gmst_hist.interpolate_na(dim="time", method="linear")
+                            gmst_hist_cordex_datasets.append(chunk)
+                            
+                        gmst_hist_cordex = xr.concat(gmst_hist_cordex_datasets, dim="time", data_vars=XR_CONCAT_DATA_VARS)
+                        gmst_hist_cordex = gmst_hist_cordex.convert_calendar("standard", use_cftime=False)
+                        gmst_hist_cordex = gmst_hist_cordex.interpolate_na(dim="time", method="linear")
                         # subset to hist_range
-                        gmst_hist = gmst_hist.sel(time=slice(hist_range[0], hist_range[1]))
-                        gmst_fut = []
+                        gmst_hist_cordex = gmst_hist_cordex.sel(time=slice(hist_range[0], hist_range[1]))
+                        
+                        gmst_fut_cordex_datasets: List[xr.Dataset] = []
                         for period in rcp_periods:
                             print(f"      - RCP8.5 Period: {period}")
                             chunk = self.fetch_cmip5_monthly_single_levels_xr(
                                 experiment="rcp_8_5", variable=Variable.CMIP5Monthly.temperature_2m,
                                 model=driving_model, ensemble_member=ensemble, period=period
                             )
-                            gmst_fut.append(chunk)
+                            gmst_fut_cordex_datasets.append(chunk)
                             
-                        gmst_fut = xr.concat(gmst_fut, dim="time", data_vars=XR_CONCAT_DATA_VARS)
-                        gmst_fut = gmst_fut.convert_calendar("standard", use_cftime=False)
-                        gmst_fut = gmst_fut.interpolate_na(dim="time", method="linear")
+                        gmst_fut_cordex = xr.concat(gmst_fut_cordex_datasets, dim="time", data_vars=XR_CONCAT_DATA_VARS)
+                        gmst_fut_cordex = gmst_fut_cordex.convert_calendar("standard", use_cftime=False)
+                        gmst_fut_cordex = gmst_fut_cordex.interpolate_na(dim="time", method="linear")
                         # subset to fut_range
-                        gmst_fut = gmst_fut.sel(time=slice(fut_range[0], fut_range[1]))
-                        gmst_merged = xr.concat([gmst_hist, gmst_fut], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
+                        gmst_fut_cordex = gmst_fut_cordex.sel(time=slice(fut_range[0], fut_range[1]))
+                        
+                        gmst_merged = xr.concat([gmst_hist_cordex, gmst_fut_cordex], dim="time", combine_attrs="override", data_vars=XR_CONCAT_DATA_VARS)
                 else:
                     print(f"   ⚠️ Skipping GMST: No driving model provided.")
                     gmst_merged = None

@@ -6,8 +6,6 @@ import geopandas as gpd
 from typing import Tuple, Union, Literal, cast
 import numpy as np
 
-from .constants import XR_CONCAT_DATA_VARS
-
 from .data import conversions
 from .utils import Utils
 import rasterio
@@ -1124,8 +1122,15 @@ class Process:
 
 
     @staticmethod
-    def compute_climate_indices(data_input, parameter, study_region, 
-                            baseline_range=("1991", "2020"), padding=15, sc_month_range: None|tuple[int, int]=None, clim_month_range: None|tuple[int, int]=None):
+    def compute_climate_indices(
+            data_input: dict[str, xr.Dataset|xr.DataTree], 
+            parameter: str, 
+            study_region: gpd.GeoDataFrame, 
+            baseline_range: tuple = ("1991", "2020"), 
+            padding: int = 15, 
+            sc_month_range: None|tuple[int, int] = None, 
+            clim_month_range: None|tuple[int, int] = None
+        ):
         """
         Unified processor for CMIP6 and CORDEX data.
         data_input: Can be a dict {name: ds} (CMIP6) or a list of dicts (CORDEX).
@@ -1200,7 +1205,7 @@ class Process:
 
                     result_list.append(stat)
                 
-                result = xr.concat(result_list, dim='dayofyear', data_vars=XR_CONCAT_DATA_VARS)
+                result = xr.concat(result_list, dim='dayofyear', data_vars=None)
                 clim31d = result.assign_coords(dayofyear=days)
 
                 sc = clim31d.where(mask == 0, drop=True)
@@ -1272,7 +1277,7 @@ class Process:
         return results
     
     @staticmethod
-    def compute_gmst_anomalies(gmst_dict, event_year, year_range=(1950, 2100), window=4):
+    def compute_gmst_anomalies(gmst_dict: dict[str, xr.Dataset|xr.DataTree], event_year: int, year_range: tuple = (1950, 2100), window: int = 4) -> dict[str, gpd.GeoDataFrame]:
         """
         Computes yearly GMST rolling anomalies relative to a specific event year.
         Compatible with CMIP5 and CMIP6 'tas' datasets.
@@ -1283,7 +1288,7 @@ class Process:
         - year_range: Tuple of (start_year, end_year)
         - window: Size of the rolling mean window
         """
-        results = {}
+        results: dict[str, gpd.GeoDataFrame] = {}
         
         for model_name, ds in gmst_dict.items():
             print(f"Calculating GMST anomalies for: {model_name}")
@@ -1338,7 +1343,7 @@ class Process:
         return results
     
     @staticmethod
-    def sliding_stat_by_dayofyear(data, pad=15, method='std', quantile_val=0.9):
+    def sliding_stat_by_dayofyear(data: xr.DataArray, pad: int = 15, method: str = 'std', quantile_val: float = 0.9) -> xr.DataArray:
 
         """
         Compute day-of-year-based sliding window statistics (mean, std, or quantile) across years.
@@ -1370,7 +1375,7 @@ class Process:
 
         days = np.arange(1, 366)  # Days of year
         dayofyear = data.valid_time.dt.dayofyear
-        result_list = []
+        result_list: list[xr.DataArray] = []
 
         for day in days:
             # Build ±pad-day window (cyclically)
@@ -1391,7 +1396,7 @@ class Process:
             result_list.append(stat)
 
         # Combine results
-        result = xr.concat(result_list, dim='dayofyear', data_vars=XR_CONCAT_DATA_VARS)
+        result = xr.concat(result_list, dim='dayofyear')
         result = result.assign_coords(dayofyear=days)
 
         return result

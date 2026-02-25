@@ -1349,7 +1349,7 @@ class Utils:
             return None
 
     @staticmethod
-    def var_map(parameter, model):
+    def var_map(parameter: str, model: str) -> str:
         VAR_MAP = {
             "Tmean":         {"cordex": "tas",    "cmip6": "near_surface_air_temperature", "era5": "temperature_2m_mean"},
             "Tmin":          {"cordex": "tasmin", "cmip6": "daily_minimum_near_surface_air_temperature", "era5": "temperature_2m_min"},
