@@ -24,13 +24,14 @@ class Utils:
     @staticmethod
     def print(*args, **kwargs):
         # 1. Get current timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")[:-3] # Include milliseconds, but remove last 3 digits to get microseconds to milliseconds precision
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # Include milliseconds, but remove last 3 digits to get microseconds to milliseconds precision
         
         # 2. Inspect the stack
         # stack[1] is the caller of this function
         caller = inspect.stack()[1]
         filename = '' # Disabled because will show hash in jupyter caller.filename.split('/')[-1] # Just the file name, not full path
-        func_name = caller.function
+        func_name = caller.function.center(20) # Center the function name in a 20-character wide field for better alignment
+        
         line_no = caller.lineno
         
         # 3. Format the metadata
