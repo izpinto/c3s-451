@@ -984,26 +984,37 @@ class Process:
         # --- Fill missing values using clim + anomaly ---
         missing_indices = gmst_complete[gmst_complete[gmst_value_col].isna()].index
 
+        # ---- Step 1: find first missing month ----
+        first_missing = missing_indices[0]
+        
+        # last 3 available months BEFORE the first missing
+        prev_indices = gmst_complete.index[gmst_complete.index < first_missing][-3:]
+        
+        # ---- Step 2: compute mean anomaly ONCE ----
+        anomalies = []
+        
+        for p_idx in prev_indices:
+            gmst_val = gmst_complete.loc[p_idx, gmst_value_col]
+        
+            clim_val = climatology.loc[
+                climatology[datetime_col].dt.month == p_idx.month,
+                climatology_value_col
+            ].iloc[0]
+        
+            anomalies.append(gmst_val - clim_val)
+        
+        mean_anomaly = sum(anomalies) / len(anomalies)
+        
+        # ---- Step 3: fill ALL missing months with same anomaly ----
         for idx in missing_indices:
-            # previous available GMST
-            prev_idx = gmst_complete.index[gmst_complete.index < idx][-1]
-            last_gmst = gmst_complete.loc[prev_idx, gmst_value_col]
-
-            # climatology values
-            prev_clim = climatology.loc[
-                climatology[datetime_col].dt.month == prev_idx.month, climatology_value_col
-            ].iloc[0]
-
+        
             missing_clim = climatology.loc[
-                climatology[datetime_col].dt.month == idx.month, climatology_value_col
+                climatology[datetime_col].dt.month == idx.month,
+                climatology_value_col
             ].iloc[0]
-
-            # anomaly
-            anomaly = last_gmst - prev_clim
-
-            # fill missing value
-            gmst_complete.loc[idx, gmst_value_col] = missing_clim + anomaly
-
+        
+            gmst_complete.loc[idx, gmst_value_col] = missing_clim + mean_anomaly
+    
         return gmst_complete.reset_index().rename(columns={"index": datetime_col})
     
     @staticmethod

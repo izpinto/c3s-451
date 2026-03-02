@@ -1388,7 +1388,7 @@ class Plot:
                          flatten_empty_plots:bool=True,
                          marker:str='s',
                          shared_colorbar:bool=True,
-                         add_logos:bool=False,
+                         add_logos:bool=True,
                          polygon_color:str='cyan',
                          contour_steps:int=200,
                          projection:cartopy.crs=ccrs.PlateCarree(),
@@ -1479,9 +1479,9 @@ class Plot:
         nrows = math.ceil(n_plots / ncols)
 
         # Projection fixed to LambertConformal
-        mid_lon = contour_gdf["longitude"].mean()
-        mid_lat = contour_gdf["latitude"].mean()
-        proj = ccrs.LambertConformal(central_longitude=mid_lon, central_latitude=mid_lat)
+        #mid_lon = contour_gdf["longitude"].mean()
+        #mid_lat = contour_gdf["latitude"].mean()
+        proj = ccrs.PlateCarree()
 
         # Figure
         fig, axes = plt.subplots(
@@ -1572,10 +1572,8 @@ class Plot:
 
             if extends is not None:
                 ax.set_extent(extends, crs=projection)
+                ax.set_box_aspect(0.8)
 
-
-        fig.subplots_adjust(hspace=.25, wspace=.05)
-        fig.tight_layout(pad=0.5)
 
         # Hide empty plots
         for j in range(i + 1, len(axes)):
@@ -1593,14 +1591,21 @@ class Plot:
             plt.show()
 
         if subtitle:
-            fig.suptitle(subtitle, y=1.05)
+            fig.suptitle(subtitle, y=1.15)
 
         # fig.subplots_adjust(wspace=0.25, hspace=.45, top=.85)
-        fig.tight_layout()
+        fig.subplots_adjust(
+                left=0.04,
+                right=0.96,
+                bottom=0.10,
+                top=0.85,      # space for colorbar + title
+                wspace=0.06,
+                hspace=0.03
+            )
 
         if add_logos:
             plt.close(fig)
-            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.1)
+            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.090)
             return fig, axes, img_ax
         else:
             return fig, axes
