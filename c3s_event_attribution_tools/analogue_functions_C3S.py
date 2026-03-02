@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
 import datetime
 import warnings
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 import matplotlib
 
 from .utils import Utils
@@ -1031,7 +1031,7 @@ class Analogues:
         return cube
 
     @staticmethod
-    def extract_region_shape(cube:iris.cube.Cube, shape:Polygon) -> iris.cube.Cube:
+    def extract_region_shape(cube:iris.cube.Cube, shape:Polygon, lat:str='latitude', lon:str='longitude') -> iris.cube.Cube:
         '''
         Extract Region using a shape e.g. shapefile or polygon
 
@@ -1044,7 +1044,8 @@ class Analogues:
         '''
 
         masked_cube = iris.util.mask_cube_from_shape(cube=cube, shape=shape)
-        return masked_cube
+
+        return Analogues.guess_bounds(masked_cube, lat=lat, lon=lon)
 
     @staticmethod
     def event_data_era_v2(event_data:str, date:list, ana_var:str) -> list:
@@ -1452,16 +1453,16 @@ class Analogues:
         ax[0].coastlines(linewidth=0.4)
         ax[0].set_title('Corr Z500')
         ax[0].gridlines(draw_labels=draw_labels)
-        Analogues.plot_box(ax[0], region)
-        Analogues.plot_box(ax[0], z500_domain)
+        Analogues.plot_region(ax[0], region)
+        Analogues.plot_region(ax[0], z500_domain)
 
         c1 = ax[1].contourf(lons, lats, slp_correlation, levels=con_lev, cmap='RdBu_r', transform=ccrs.PlateCarree())
         ax[1].add_feature(cfeature.COASTLINE)
         ax[1].coastlines(linewidth=0.4)
         ax[1].set_title('Corr MSL')
         ax[1].gridlines(draw_labels=draw_labels)
-        Analogues.plot_box(ax[1], region)
-        Analogues.plot_box(ax[1], slp_domain)
+        Analogues.plot_region(ax[1], region)
+        Analogues.plot_region(ax[1], slp_domain)
 
         fig.subplots_adjust(right=0.8)
         cax = fig.add_axes([0.85, 0.3, 0.01, 0.4])
@@ -1470,6 +1471,35 @@ class Analogues:
         plt.tight_layout()
 
         return fig, ax
+    
+    @staticmethod
+    def plot_region(axs, region):
+        """
+        Draw region on plot.
+
+        Parameters
+        ----------
+        axs : matplotlib.axes.Axes
+            The axes to draw on.
+        region : list[float], shapely.geometry.Polygon or shapely.geometry.MultiPolygon
+            Either bounding box [min_lat, max_lat, min_lon, max_lon],
+            a Polygon or a MultiPolygon.
+        """
+        if isinstance(region, list):
+            # bounding box
+            axs.plot([region[3], region[2]], [region[1], region[1]], 'k')
+            axs.plot([region[3], region[2]], [region[0], region[0]], 'k')
+            axs.plot([region[3], region[3]], [region[1], region[0]], 'k')
+            axs.plot([region[2], region[2]], [region[1], region[0]], 'k')
+
+        elif isinstance(region, Polygon):
+            x, y = region.exterior.xy
+            axs.plot(x, y, 'r', linewidth=2)
+
+        elif isinstance(region, MultiPolygon):
+            for poly in region.geoms:
+                x, y = poly.exterior.xy
+                axs.plot(x, y, 'r', linewidth=2)
 
     # Violin Plot (to visually check the result)
     @staticmethod
@@ -1833,12 +1863,21 @@ class Analogues:
             cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
             cbar.ax.tick_params()
             Analogues.background(ax)
-            # Plotting Change
+            # Plotting Change            
             ax= plt.subplot(len(var_list),4,(i*4)+4,projection=ccrs.PlateCarree())
             Dmax = np.round(np.nanmax(np.abs([np.nanmin((PRST_comp-PAST_comp).data), np.nanmax((PRST_comp-PAST_comp).data)])))
             diff_lev = np.linspace(-Dmax, Dmax, 41)
             c1 = ax.contourf(lons, lats, (PRST_comp-PAST_comp).data, levels=diff_lev, cmap=CMAP[1], transform=ccrs.PlateCarree(), extend='both')
-            c2 = ax.contourf(lons, lats, sig_field[i].data, levels=[-2, 0, 2], hatches=['////', None], colors='none', transform=ccrs.PlateCarree())
+
+            if sig_field is not None:
+                c2 = ax.contourf(
+                    lons, lats, sig_field[i].data,
+                    levels=[-2, 0, 2],
+                    hatches=['////', None],
+                    colors='none',
+                    transform=ccrs.PlateCarree()
+                )
+            
             cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
             cbar.ax.tick_params()
             Analogues.background(ax)
