@@ -1,4 +1,5 @@
 from datetime import timedelta
+import inspect
 import requests
 import numpy as np
 from shapely.geometry import Polygon
@@ -20,6 +21,27 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output
 
 class Utils:
+    @staticmethod
+    def print(*args, **kwargs):
+        # 1. Get current timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # Include milliseconds, but remove last 3 digits to get microseconds to milliseconds precision
+        
+        # 2. Inspect the stack
+        # stack[1] is the caller of this function
+        caller = inspect.stack()[1]
+        filename = '' # Disabled because will show hash in jupyter caller.filename.split('/')[-1] # Just the file name, not full path
+        func_name = caller.function.center(20) # Center the function name in a 20-character wide field for better alignment
+        
+        line_no = caller.lineno
+        
+        # 3. Format the metadata
+        prefix = f"[{timestamp}] [{filename}:{line_no} @ {func_name}]"
+        
+        # 4. Call the real Utils.print
+        # We put the prefix first, then the original arguments
+        print(prefix, *args, **kwargs)
+    
+    
     """Utility class for various geospatial & temporal data operations, including region selection and data manipulation, splitting time ranges, etc."""
 
     @staticmethod
@@ -135,8 +157,12 @@ class Utils:
 
 
     @staticmethod
-    def select_region(regionType:str, bbox:tuple[float, float, float, float]|None=None,
-                    overlays:dict[str, str]|None=None, params:Dict[str, Any]=None):
+    def select_region(
+        regionType: str, 
+        bbox: tuple[float, float, float, float]|None = None,
+        overlays: dict[str, str]|None = None, 
+        params: None|Dict[str, Any] = None
+    ):
         '''
         Initiates a web-based geographical region selection tool and retrieves the selected polygon.
 
@@ -180,7 +206,7 @@ class Utils:
         if regionType not in allowed_region_types:
             raise ValueError(f"Invalid regionType '{regionType}'. Allowed values are: {allowed_region_types}")
         
-        print('The region picker will shortly open in your web browser. Please select a region, close the browser tab and return to the notebook when done.')
+        Utils.print('The region picker will shortly open in your web browser. Please select a region, close the browser tab and return to the notebook when done.')
         
         url = f"https://event-attribution.copernicus-climate.eu/region-picker/start-m2m/{regionType}"
 
@@ -193,19 +219,19 @@ class Utils:
         
         if response.status_code == 200:
             data = response.json()
-            print(f"Region Picker started successfully for {regionType}:")
-            print(f"Open the following page in your browser to select a region: ")
-            print(f"\t\t{data['url']}")
+            Utils.print(f"Region Picker started successfully for {regionType}:")
+            Utils.print(f"Open the following page in your browser to select a region: ")
+            Utils.print(f"\t\t{data['url']}")
             webbrowser.open(data['url'])
             poll_url = data['poll_url']
         else:
-            print(f"Failed to start Region Picker for {regionType}. Status code: {response.status_code}")
-            print(f"Response: {response.text}")
+            Utils.print(f"Failed to start Region Picker for {regionType}. Status code: {response.status_code}")
+            Utils.print(f"Response: {response.text}")
         
         result = None
         
         if poll_url:
-            print(f"Polling for region selection...")
+            Utils.print(f"Polling for region selection...")
             
             done = False
             
@@ -217,14 +243,14 @@ class Utils:
                         done = True
                         result = data['result']
                 else:
-                    print(f"Failed to poll Region Picker for {regionType}. Status code: {response.status_code}")
-                    print(f"Response: {response.text}")
+                    Utils.print(f"Failed to poll Region Picker for {regionType}. Status code: {response.status_code}")
+                    Utils.print(f"Response: {response.text}")
                     break
             
-            print("Region selection process done.")
+            Utils.print("Region selection process done.")
         
-        print("Received polygon data:")
-        print(result)
+        Utils.print("Received polygon data:")
+        Utils.print(result)
 
         return result
 
@@ -592,13 +618,15 @@ class Utils:
             return gdf
 
     @staticmethod
-    def subset_gdf(gdf:gpd.GeoDataFrame, datetime_col:str|None=None,
-                date_range:tuple[datetime, datetime]|None=None,
-                year_range:tuple[int, int]|None=None,
-                month_range:tuple[int, int]|None=None,
-                doy_range:tuple[int, int]|None=None,
-                study_region:gpd.GeoDataFrame|None=None
-                ) -> gpd.GeoDataFrame:
+    def subset_gdf(
+        gdf: gpd.GeoDataFrame, 
+        datetime_col: str|None = None,
+        date_range: tuple[datetime, datetime]|None = None,
+        year_range: tuple[int, int]|None = None,
+        month_range: tuple[int, int]|None = None,
+        doy_range: tuple[int, int]|None = None,
+        study_region: gpd.GeoDataFrame|None = None
+    ) -> gpd.GeoDataFrame:
         '''
         Creates a subset of a GeoDataFrame by applying various spatio-temporal filters.
 
@@ -645,6 +673,7 @@ class Utils:
 
         if study_region is not None:
             gdf = Utils.select_study_region_gdf(gdf, study_region)
+            
             if gdf.empty: 
                 warnings.warn(message="The resulting GeoDataFrame is empty after applying the `studyregion` filter.", stacklevel=2)
 
@@ -668,12 +697,12 @@ class Utils:
         Returns:
             gpd.GeoDataFrame: A copy of the input GeoDataFrame with the datetime column shifted.
         '''
-        direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
+        n_direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
 
         gdf = gdf.copy()
 
         gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * direction
+        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * n_direction
 
         return gdf
 
@@ -707,9 +736,11 @@ class Utils:
 
 
     @staticmethod
-    def get_seasonal_cycle_plot_values(data:gpd.GeoDataFrame, datetime_col:str='valid_time',
-                                       month_range:tuple[int, int]=(1,12)
-                                       ) -> tuple[gpd.GeoDataFrame, pd.Index, pd.DatetimeIndex]:
+    def get_seasonal_cycle_plot_values(
+        data: gpd.GeoDataFrame, 
+        datetime_col: str='valid_time',
+        month_range: tuple[int, int]=(1,12)
+    ) -> tuple[gpd.GeoDataFrame, pd.Index, pd.DatetimeIndex]:
         '''
         Prepares a GeoDataFrame for seasonal cycle plotting by adjusting datetime values for correct chronological ordering across month boundaries.
 
@@ -908,7 +939,7 @@ class Utils:
                 df_dict[name] = df
 
             except Exception as e:
-                print(f"Error converting model '{name}': {e}")
+                Utils.print(f"Error converting model '{name}': {e}")
                 continue
 
         return df_dict
@@ -943,7 +974,7 @@ class Utils:
         return "Bad", summary   
 
     @staticmethod
-    def extract_results(parameter, df, df_res, df_obs, dist, conf):
+    def extract_results(parameter:str, df: pd.DataFrame, df_res: pd.DataFrame, df_obs: pd.DataFrame, dist: str, conf: str):
         """ 
         Compare model validation results with observations and update the DataFrame.
         df: DataFrame to update (model hub)
@@ -971,10 +1002,15 @@ class Utils:
                     'upper': df.loc['era5', f'{param_prefix}_upper']
                 }
             except KeyError:
-                print(f"⚠️  Note: Parameter '{param_prefix}' not found in observations. Skipping.")
+                Utils.print(f"⚠️  Note: Parameter '{param_prefix}' not found in observations. Skipping.")
                 return None
             
         active_params = []
+        
+        obs_sigma = None
+        obs_shape = None
+        obs_disp = None
+        
         if dist == "gev":
             active_params.append("shape")
             obs_shape = get_obs_dict(df_obs, 'shape')
@@ -1264,9 +1300,9 @@ class Utils:
                 
                 if save_path:
                     df_validation.to_csv(save_path, index=False)
-                    print(f"✅ Changes saved to memory AND disk: {save_path}")
+                    Utils.print(f"✅ Changes saved to memory AND disk: {save_path}")
                 else:
-                    print(f"✅ Changes saved to memory")
+                    Utils.print(f"✅ Changes saved to memory")
 
         save_button.on_click(on_save_clicked)
         
@@ -1331,11 +1367,11 @@ class Utils:
         try:
             return PARAMETER_CONFIG.get(parameter)
         except Exception as e:
-            print(f"Error retrieving parameter config for {parameter}: {e}")
+            Utils.print(f"Error retrieving parameter config for {parameter}: {e}")
             return None
 
     @staticmethod
-    def var_map(parameter, model):
+    def var_map(parameter: str, model: str) -> str:
         VAR_MAP = {
             "Tmean":         {"cordex": "tas",    "cmip6": "near_surface_air_temperature", "era5": "temperature_2m_mean"},
             "Tmin":          {"cordex": "tasmin", "cmip6": "daily_minimum_near_surface_air_temperature", "era5": "temperature_2m_min"},

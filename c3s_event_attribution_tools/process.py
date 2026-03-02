@@ -3,7 +3,7 @@ from pathlib import Path
 from collections import defaultdict
 import pandas as pd
 import geopandas as gpd
-from typing import Any, Union, Literal, Dict, List
+from typing import Tuple, Union, Literal, cast
 import numpy as np
 
 from .data import conversions
@@ -22,10 +22,15 @@ class Process:
 
     # Don't use
     @staticmethod
-    def calculate_mean_gdf(gdf:gpd.GeoDataFrame, date_range:pd.core.arrays.datetimes.DatetimeArray,
-                           value_col:str, datetime_col:str="valid_time", padding:int=15,
-                            year_range:tuple[int, int]=None, group_by:list[str]=["longitude", "latitude", "geometry"]
-                           ):
+    def calculate_mean_gdf(
+        gdf:gpd.GeoDataFrame, 
+        date_range: pd.core.arrays.datetimes.DatetimeArray,  # pyright: ignore[reportAttributeAccessIssue]
+        value_col: str, 
+        datetime_col: str="valid_time", 
+        padding: int=15,
+        year_range: None|tuple[int, int]=None, 
+        group_by: list[str]=["longitude", "latitude", "geometry"]
+    ):
         '''
         Calculate mean climatology values around each date in date_range across years,
         returning a GeoDataFrame with the same structure as the input.
@@ -76,7 +81,7 @@ class Process:
 
                 # skip if center_date not in gdf
                 if pd.Timestamp(center_date) not in gdf[datetime_col].values:
-                    print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
+                    Utils.print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
                     continue
 
                 # range should never exceed data range
@@ -174,8 +179,8 @@ class Process:
         datetime_col: str = "valid_time",
         method: Literal["sum", "mean", "std", "quantile"] = "mean",
         quantile: float = 0.9,
-        group_by: list[str] = None
-    ):
+        group_by: None|list[str] = None
+    ) -> pd.DataFrame|gpd.GeoDataFrame:
         '''
         Compute rolling n-day statistics (sum, mean, std, quantile) for each point
         or globally.
@@ -213,6 +218,8 @@ class Process:
 
         if group_by is None:
             group_by = []  # roll globally
+            
+        result = pd.DataFrame()  # Initialize empty DataFrame to store results
 
         def apply_roll(group):
             roller = group.set_index(datetime_col)[value_col].rolling(
@@ -230,11 +237,13 @@ class Process:
                 raise ValueError(f"Unsupported method: {method}")
 
             group[value_col] = rolled.values
+            
             return group
 
         if group_by:
             # rolling separately for each group (e.g. per lat/lon/geometry)
             result = gdf.groupby(group_by, group_keys=False).apply(apply_roll)
+            
         else:
             # single global time series
             roller = gdf.set_index(datetime_col)[value_col].rolling(
@@ -256,8 +265,8 @@ class Process:
         # preserve GeoDataFrame type if input was GeoDataFrame
         if isinstance(gdf, gpd.GeoDataFrame):
             return gpd.GeoDataFrame(result, geometry="geometry", crs=gdf.crs)
-        return result
-
+        
+        return cast(pd.DataFrame, result)
 
 
     @staticmethod
@@ -269,7 +278,7 @@ class Process:
         datetime_col: str = "valid_time",
         method: Literal["sum", "mean", "std", "quantile", "dispersion"] = "mean",
         quantile: float = 0.9,
-        group_by: list[str] = None,
+        group_by: None|list[str] = None,
         min_periods: int|None = 1,
         remove_leap_days: bool = False,
         ci: float = 0
@@ -418,6 +427,8 @@ class Process:
 
         result_list = []
 
+        doy_mean_gdf = pd.DataFrame()  # Initialize empty DataFrame to store results
+        
         for day in days:
             # Build ±pad-day window (cyclically)
             window_days = [(day + offset - 1) % 365 + 1 for offset in range(-padding, padding + 1)]
@@ -436,7 +447,11 @@ class Process:
             doy_mean_gdf = pd.concat(result_list, ignore_index=True)
 
         # Turn dataframe back into a gpd
-        return_gdf = gpd.GeoDataFrame(doy_mean_gdf, geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), crs=gdf.crs)
+        return_gdf = gpd.GeoDataFrame(
+            doy_mean_gdf, 
+            geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), 
+            crs=gdf.crs
+        )
 
         # turn doy (day of year) column back into datetime column
         return_gdf[datetime_col] = pd.to_datetime(f'{event_date.year}', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
@@ -448,8 +463,8 @@ class Process:
 
     # apply a weight to each value based on latitude
     @staticmethod
-    def weighted_values(df:gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset, value_col:str, lat_col:str='latitude'
-                        ) -> gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset|Any:
+    def weighted_values(df:gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset, value_col:None|str, lat_col:str='latitude'
+                        ) -> gpd.GeoDataFrame|xr.DataArray:
         
         '''
         Calculates the weights for the values based on latitude
@@ -477,7 +492,8 @@ class Process:
             if lat_col not in df.coords:
                 raise ValueError(f"Latitude coordinate '{lat_col}' not found")
             
-            print ("Calculating weights for xarray DataArray/Dataset...")
+            Utils.print ("Calculating weights for xarray DataArray/Dataset...")
+            
             weights = xr.DataArray(np.cos(np.deg2rad(df[lat_col])), dims=lat_col)
 
             return weights
@@ -489,7 +505,8 @@ class Process:
             if lat_col not in df.columns:
                 raise ValueError(f"Latitude coordinate '{lat_col}' not found")
 
-            print ("Calculating weights for GeoDataFrame...")
+            Utils.print ("Calculating weights for GeoDataFrame...")
+            
             weights = np.cos(np.deg2rad(df[lat_col]))
 
             df = df.copy()
@@ -512,7 +529,7 @@ class Process:
     # J: or if the output is even similar to the original
     # J: this does not work for xarray, only geopandas
     @staticmethod
-    def calculate_mean(gdf: gpd.GeoDataFrame|xr.DataArray|xr.Dataset, value_col: str, groupby_col: str|list[str]) -> gpd.GeoDataFrame:
+    def calculate_mean(gdf: gpd.GeoDataFrame|xr.DataArray|xr.Dataset, value_col: str, groupby_col: str|list[str]) -> gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset:
 
         '''
         Calculate mean values grouped by specified columns.
@@ -614,15 +631,12 @@ class Process:
                 Minimum values grouped by specified column.
         '''
 
-        return (
-            gdf.loc[gdf.groupby(groupby_col)[value_col].idxmin(), [groupby_col, datetime_col, value_col]]
-            .reset_index(drop=True)
-        )
+        return gdf.loc[gdf.groupby(groupby_col)[value_col].idxmin(), [groupby_col, datetime_col, value_col]].reset_index(drop=True)
 
     @staticmethod
     def calculate_yearly_value(gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str,
                                yearly_value:str, month_range:tuple[int, int]|None=None,
-                               padding:int=0, method:str='mean') -> gpd.GeoDataFrame:
+                               padding:int=0, method:Literal["sum", "mean", "std", "quantile"]='mean') -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
         '''
         Calculate yearly values (mean, max, min) from daily data with optional rolling window and month subsetting.
 
@@ -653,8 +667,16 @@ class Process:
         '''
 
         # calculate running mean. if padding == 1 gdf gets automatically returned
-        rolled_gdf = Process.calculate_rolling_n_days(gdf=gdf, value_col=value_col, datetime_col=datetime_col,
-                                            padding=padding, centering=True, method=method)
+        rolled_gdf = Process.calculate_rolling_n_days(
+            gdf=gdf, 
+            value_col=value_col, 
+            datetime_col=datetime_col,
+            padding=padding, 
+            centering=True, 
+            method=method
+        )
+
+        rolled_gdf = cast(gpd.GeoDataFrame, rolled_gdf)
 
         # subset the gdf to remove potential padding
         if month_range is not None:
@@ -670,21 +692,22 @@ class Process:
 
         match yearly_value:
             case 'mean':
-                return Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year'), rolled_gdf
+                return cast(gpd.GeoDataFrame, Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')), rolled_gdf
             case 'max':
-                return Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year'), rolled_gdf
+                return cast(gpd.GeoDataFrame, Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
             case 'min':
-                return Process.calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year'), rolled_gdf
+                return cast(gpd.GeoDataFrame, Process.calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
             case _:
                 raise ValueError("calculation must be 'mean', 'max', or 'min'")
 
     @staticmethod
-    def calculate_seasonal_cycle(clim31d: gpd.GeoDataFrame,
-                            studyregion: gpd.GeoDataFrame | dict,
-                            value_col: str,
-                            event_end: pd.Timestamp,
-                            datetime_col: str = "valid_time",
-                            month_range: tuple[int, int]=(1,12),
+    def calculate_seasonal_cycle(
+        clim31d: gpd.GeoDataFrame,
+        studyregion: gpd.GeoDataFrame,
+        value_col: str,
+        event_end: pd.Timestamp,
+        datetime_col: str = "valid_time",
+        month_range: tuple[int, int]=(1,12),
     ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, pd.Index, pd.DatetimeIndex]:
         '''
         Calculate seasonal cycle of climatology data for a study region.
@@ -717,11 +740,14 @@ class Process:
             pd.to_datetime(f"{event_end.year}", format="%Y")
             + pd.to_timedelta(gdf_sub["doy"] - 1, unit="D")
         )
-        gdf_weighted = Process.weighted_values(gdf_sub, value_col)
-        ts_clim31d_studyregion = Process.calculate_mean(gdf_weighted, value_col=value_col, groupby_col=datetime_col)
+        gdf_weighted = cast(gpd.GeoDataFrame, Process.weighted_values(gdf_sub, value_col))
+        
+        ts_clim31d_studyregion = cast(gpd.GeoDataFrame, Process.calculate_mean(gdf_weighted, value_col=value_col, groupby_col=datetime_col))
+        
         plot_df, labels, labelticks = Utils.get_seasonal_cycle_plot_values(
             ts_clim31d_studyregion, datetime_col=datetime_col, month_range=month_range
         )
+        
         return ts_clim31d_studyregion, plot_df, labels, labelticks
 
     @staticmethod
@@ -730,7 +756,7 @@ class Process:
         kg_da: xr.DataArray,
         category: str | list[str],
         invert: bool = True  # True → exclude category, False → keep only category
-    ) -> Polygon:
+    ) -> list[Polygon]:
         '''
         Filter polygons based on Köppen–Geiger classification raster.
 
@@ -765,7 +791,7 @@ class Process:
         for c in category:
             codes.extend(KG_GROUPS[c])
 
-        adjusted_polygons = []
+        adjusted_polygons = []  # Start with an empty geometry
 
         for poly in polygons:
             minx, miny, maxx, maxy = poly.bounds
@@ -798,13 +824,13 @@ class Process:
                 # keep only given categories
                 mask = np.isin(kg_vals, codes) & inside_poly
 
-            transform = rasterio.transform.from_bounds(
+            transform = rasterio.transform.from_bounds(  # pyright: ignore[reportAttributeAccessIssue]
                 lon.min(), lat.min(),
                 lon.max(), lat.max(),
                 len(lon), len(lat)
             )
 
-            for geom, val in rasterio.features.shapes(
+            for geom, val in rasterio.features.shapes(  # pyright: ignore[reportAttributeAccessIssue]
                     mask.astype(np.uint8),
                     mask=mask,
                     transform=transform):
@@ -816,8 +842,9 @@ class Process:
                     if not clipped_poly.is_empty:
                         if clipped_poly.geom_type == "Polygon":
                             adjusted_polygons.append(clipped_poly)
+                            
                         elif clipped_poly.geom_type == "MultiPolygon":
-                            adjusted_polygons.extend(list(clipped_poly.geoms))
+                            adjusted_polygons.extend(list(clipped_poly.geoms))  # pyright: ignore[reportAttributeAccessIssue]
 
         return adjusted_polygons
 
@@ -827,7 +854,7 @@ class Process:
         yearly_value: str,              # options: "max", "mean", "min"
         month_range: tuple[int, int]|None = None,  # e.g., (6, 8) for June-August, None for all months
         padding: int=0,                   # n-day rolling window
-        method: str = None              # "mean" or "sum"
+        method: str|None = None              # "mean" or "sum"
     ) -> dict[str, xr.DataArray]:
         '''
         Iterates over a dictionary of DataArrays, applies a rolling window and 
@@ -919,6 +946,7 @@ class Process:
 
         return da_yearly_series
 
+    @staticmethod
     def fill_missing_gmst_with_climatology(
         gmst_monthly: pd.DataFrame,
         climatology: pd.DataFrame,
@@ -984,26 +1012,37 @@ class Process:
         # --- Fill missing values using clim + anomaly ---
         missing_indices = gmst_complete[gmst_complete[gmst_value_col].isna()].index
 
+        # ---- Step 1: find first missing month ----
+        first_missing = missing_indices[0]
+        
+        # last 3 available months BEFORE the first missing
+        prev_indices = gmst_complete.index[gmst_complete.index < first_missing][-3:]
+        
+        # ---- Step 2: compute mean anomaly ONCE ----
+        anomalies = []
+        
+        for p_idx in prev_indices:
+            gmst_val = gmst_complete.loc[p_idx, gmst_value_col]
+        
+            clim_val = climatology.loc[
+                climatology[datetime_col].dt.month == p_idx.month,
+                climatology_value_col
+            ].iloc[0]
+        
+            anomalies.append(gmst_val - clim_val)
+        
+        mean_anomaly = sum(anomalies) / len(anomalies)
+        
+        # ---- Step 3: fill ALL missing months with same anomaly ----
         for idx in missing_indices:
-            # previous available GMST
-            prev_idx = gmst_complete.index[gmst_complete.index < idx][-1]
-            last_gmst = gmst_complete.loc[prev_idx, gmst_value_col]
-
-            # climatology values
-            prev_clim = climatology.loc[
-                climatology[datetime_col].dt.month == prev_idx.month, climatology_value_col
-            ].iloc[0]
-
+        
             missing_clim = climatology.loc[
-                climatology[datetime_col].dt.month == idx.month, climatology_value_col
+                climatology[datetime_col].dt.month == idx.month,
+                climatology_value_col
             ].iloc[0]
-
-            # anomaly
-            anomaly = last_gmst - prev_clim
-
-            # fill missing value
-            gmst_complete.loc[idx, gmst_value_col] = missing_clim + anomaly
-
+        
+            gmst_complete.loc[idx, gmst_value_col] = missing_clim + mean_anomaly
+    
         return gmst_complete.reset_index().rename(columns={"index": datetime_col})
     
     @staticmethod
@@ -1098,8 +1137,15 @@ class Process:
 
 
     @staticmethod
-    def compute_climate_indices(data_input, parameter, study_region, 
-                            baseline_range=("1991", "2020"), padding=15, sc_month_range: tuple[int, int]=None, clim_month_range: tuple[int, int]=None):
+    def compute_climate_indices(
+            data_input: dict[str, xr.Dataset|xr.DataTree], 
+            parameter: str, 
+            study_region: gpd.GeoDataFrame, 
+            baseline_range: tuple = ("1991", "2020"), 
+            padding: int = 15, 
+            sc_month_range: None|tuple[int, int] = None, 
+            clim_month_range: None|tuple[int, int] = None
+        ):
         """
         Unified processor for CMIP6 and CORDEX data.
         data_input: Can be a dict {name: ds} (CMIP6) or a list of dicts (CORDEX).
@@ -1125,7 +1171,7 @@ class Process:
                 items_to_process.append((label, entry["experiment_data"], entry))
 
         for label, ds, original_entry in items_to_process:
-            print(f"Processing: {label}")
+            Utils.print(f"Processing: {label}")
             try:
                 # Extract Variable & Unit Conversion
                 da = ds[parameter]
@@ -1174,7 +1220,7 @@ class Process:
 
                     result_list.append(stat)
                 
-                result = xr.concat(result_list, dim='dayofyear')
+                result = xr.concat(result_list, dim='dayofyear', data_vars=None)
                 clim31d = result.assign_coords(dayofyear=days)
 
                 sc = clim31d.where(mask == 0, drop=True)
@@ -1236,17 +1282,19 @@ class Process:
                 results["time_series"][label] = tsfinal_out
                 results["processed"].append(original_entry)
                 
-                print(f"{label} Processed successfully.")
+                Utils.print(f"{label} Processed successfully.")
 
             except Exception as exc:
                 results["dropped"].append(original_entry)
-                print(f"ERROR: {label} Failed: {exc}")
+                Utils.print(f"ERROR: {label} Failed: {exc}")
                 continue
+
+        Utils.print(f"Processing complete. {len(results['processed'])} succeeded, {len(results['dropped'])} dropped.")
 
         return results
     
     @staticmethod
-    def compute_gmst_anomalies(gmst_dict, event_year, year_range=(1950, 2100), window=4):
+    def compute_gmst_anomalies(gmst_dict: dict[str, xr.Dataset|xr.DataTree], event_year: int, year_range: tuple = (1950, 2100), window: int = 4) -> dict[str, gpd.GeoDataFrame]:
         """
         Computes yearly GMST rolling anomalies relative to a specific event year.
         Compatible with CMIP5 and CMIP6 'tas' datasets.
@@ -1257,10 +1305,10 @@ class Process:
         - year_range: Tuple of (start_year, end_year)
         - window: Size of the rolling mean window
         """
-        results = {}
+        results: dict[str, gpd.GeoDataFrame] = {}
         
         for model_name, ds in gmst_dict.items():
-            print(f"Calculating GMST anomalies for: {model_name}")
+            Utils.print(f"Calculating GMST anomalies for: {model_name}")
             try:
                 # Extract variable and convert units
                 da = ds['tas']
@@ -1290,28 +1338,29 @@ class Process:
 
                 # Subset to Study Period
                 df_subset = Utils.subset_gdf(
-                    gdf=df_rolled, datetime_col="year", 
+                    gdf=cast(gpd.GeoDataFrame, df_rolled), 
+                    datetime_col="year", 
                     date_range=(year_range[0], year_range[1])
                 ).copy()
 
                 df_subset["gmst"] = conversions.Conversions.convert_temperature(df_subset["gmst"], "k", "c")
                 # Calculate Anomaly relative to Event Year
                 try:
-                    ref_val = df_subset.loc[df_subset["year"] == event_year, "gmst"].values[0]
+                    ref_val = df_subset.loc[df_subset["year"] == event_year, "gmst"].values[0]  # pyright: ignore[reportAttributeAccessIssue]
                     df_subset["gmst"] = df_subset["gmst"] - ref_val
                     results[model_name] = df_subset
-                    print(f"SUCCES: GMST anomaly calculated (Ref {event_year}: {ref_val:.2f}°C)")
+                    Utils.print(f"SUCCES: GMST anomaly calculated (Ref {event_year}: {ref_val:.2f}°C)")
                 except IndexError:
-                    print(f"WARNING: Event year {event_year} not found in model {model_name} range.")
+                    Utils.print(f"WARNING: Event year {event_year} not found in model {model_name} range.")
                     continue
 
             except Exception as e:
-                print(f"ERROR: Failed to process GMST for {model_name}: {e}")
+                Utils.print(f"ERROR: Failed to process GMST for {model_name}: {e}")
                 
         return results
     
     @staticmethod
-    def sliding_stat_by_dayofyear(data, pad=15, method='std', quantile_val=0.9):
+    def sliding_stat_by_dayofyear(data: xr.DataArray, pad: int = 15, method: str = 'std', quantile_val: float = 0.9) -> xr.DataArray:
 
         """
         Compute day-of-year-based sliding window statistics (mean, std, or quantile) across years.
@@ -1343,7 +1392,7 @@ class Process:
 
         days = np.arange(1, 366)  # Days of year
         dayofyear = data.valid_time.dt.dayofyear
-        result_list = []
+        result_list: list[xr.DataArray] = []
 
         for day in days:
             # Build ±pad-day window (cyclically)
@@ -1358,6 +1407,8 @@ class Process:
                 stat = window_data.mean(dim='valid_time')
             elif method == 'quantile':
                 stat = window_data.quantile(quantile_val, dim='valid_time')
+            else:
+                raise ValueError("Invalid method. Choose from 'std', 'mean', or 'quantile'.")
             
             result_list.append(stat)
 

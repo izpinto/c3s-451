@@ -16,6 +16,7 @@ import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 from datetime import datetime, timedelta
 from typing import Union, Literal
+from .utils import Utils
 
 
 
@@ -24,7 +25,7 @@ from typing import Union, Literal
 #===============================================================================================================================================================
 
 # add standard deviation
-def depreciated_n_day_accumulations_gdf(data, value_col, parameter, event_date, labelticks, labels, centering=False, datetime_col="valid_time", days=None, ylimit=None):
+def deprecated_n_day_accumulations_gdf(data, value_col, parameter, event_date, labelticks, labels, centering=False, datetime_col="valid_time", days=None, ylimit=None):
 
     fig, axs = plt.subplots(ncols=4, figsize=(20, 3), dpi=100, sharey=True)
 
@@ -82,7 +83,7 @@ def depreciated_n_day_accumulations_gdf(data, value_col, parameter, event_date, 
 
         # Highlight date window
         ylim = ax.get_ylim()
-        print(ylim)
+        Utils.print(ylim)
 
         dayofyear = pd.to_datetime(event_date).dayofyear
         ax.add_patch(Rectangle((dayofyear, ylim[0]), -15, 10000,
@@ -92,15 +93,17 @@ def depreciated_n_day_accumulations_gdf(data, value_col, parameter, event_date, 
         # Highlight selected year
         year2 = pd.to_datetime(event_date)
         data_y = data_nday[data_nday[datetime_col] <= year2]
-        ax.plot(data_y[datetime_col].dt.dayofyear, data_y[value_col], color="k")
 
-    if ylimit is not None:
-        ax.set_ylim(0, ylimit)
+        if ylimit is not None:
+            ax.set_ylim(0, ylimit)
+            
+        ax.plot(data_y[datetime_col].dt.dayofyear, data_y[value_col], color="k")
+            
 
     return fig, axs
 
 
-def depreciated_plot_n_day_accumulations(rolled_data_list, value_col, parameter, event_date, labelticks, labels, days, ylimit=None, datetime_col="valid_time"):
+def deprecated_plot_n_day_accumulations(rolled_data_list, value_col, parameter, event_date, labelticks, labels, days, ylimit=None, datetime_col="valid_time"):
     """
     Plot n-day rolling accumulations for different windows.
     
@@ -165,7 +168,7 @@ def depreciated_plot_n_day_accumulations(rolled_data_list, value_col, parameter,
 
 
 
-def depreciated_subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
+def deprecated_subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
                 polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
                 cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
                 coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
@@ -254,7 +257,7 @@ def depreciated_subplot_gdf(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:s
 
 
 # plots multiple subplots of a GeoDataFrame in a single figure
-def depreciated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
+def deprecated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time',
                 polygons:list[Polygon]=None, ncols:int=5, figsize:tuple[int, int]=(20, 12),
                 cmap:str='coolwarm', legend_title:str='Temperature (°C)', borders:bool=True,
                 coastlines:bool=True, gridlines:bool=True, subtitle:str=None,
@@ -350,7 +353,7 @@ def depreciated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:
 # Process
 #===============================================================================================================================================================
 
-def depreciated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time'):
+def deprecated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time'):
     # Ensure datetime columns
     final_gdf = final_gdf.copy()
     event_gdf = event_gdf.copy()
@@ -404,7 +407,7 @@ def depreciated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoD
 
 
 
-def depreciated_n_day_accumulations_gdf1(gdf, value_col:str, padding:int, centering:bool=False, datetime_col:str="valid_time"):
+def deprecated_n_day_accumulations_gdf1(gdf, value_col:str, padding:int, centering:bool=False, datetime_col:str="valid_time"):
     """
     Compute rolling n-day accumulation (sum for 'tp', mean otherwise).
     
@@ -447,10 +450,14 @@ def depreciated_n_day_accumulations_gdf1(gdf, value_col:str, padding:int, center
 
     return data_nday
 
-def depreciated_n_day_accumulations_gdf2(
-    gdf:Union[pd.DataFrame, gpd.GeoDataFrame], value_col:str, padding:int,
-    centering:bool=False, datetime_col:str="valid_time",
-    method:Literal["sum", "mean", "std", "quantile"]="mean", quantile:float=0.9
+def deprecated_n_day_accumulations_gdf2(
+    gdf:Union[pd.DataFrame, gpd.GeoDataFrame], 
+    value_col:str, 
+    padding:int,
+    centering:bool=False, 
+    datetime_col:str="valid_time",
+    method:Literal["sum", "mean", "std", "quantile"]="mean", 
+    quantile:float=0.9
 ):
     """
     Compute rolling n-day statistics (sum, mean, std, quantile).

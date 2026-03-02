@@ -5,7 +5,7 @@ import geopandas as gpd
 import xarray as xr
 import iris  # type: ignore
 import tempfile
-
+from ..utils import Utils
 
 class MarsClient:
     def __init__(self, key: str):
@@ -44,7 +44,7 @@ class MarsClient:
             v = subprocess.run(
                 ["cdo", "-V"], capture_output=True, text=True, check=True
             )
-            print(f"✅ {v.stdout.splitlines()[0]}")
+            Utils.print(f"✅ {v.stdout.splitlines()[0]}")
         except Exception as e:
             raise EnvironmentError(f"⚠️ CDO check failed: {e}")
 
@@ -133,7 +133,7 @@ class MarsClient:
         """
         time = "00:00:00/06:00:00/12:00:00/18:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(
+        Utils.print(
             f"Fetching t2m data for past 7 days from MARS: {self.get_date_list(min_date, max_date)}"
         )
         request = {
@@ -230,7 +230,7 @@ class MarsClient:
         """
         time = "00:00:00/12:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(
+        Utils.print(
             f"Fetching t2m min data for past 7 days from MARS: {self.get_date_list(min_date, max_date)}"
         )
         request = {
@@ -271,7 +271,7 @@ class MarsClient:
         )
 
         ds = xr.open_dataset(out_daily)
-        print(ds)
+        Utils.print(ds)
         # Convert to dataframe but only keep (lon, lat, time, tmin)
         df = ds[["longitude", "latitude", "time", "mn2t6"]].to_dataframe().reset_index()
         out_daily = gpd.GeoDataFrame(
@@ -330,7 +330,7 @@ class MarsClient:
         """
         time = "00:00:00/12:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(
+        Utils.print(
             f"Fetching t2m max data from MARS: {self.get_date_list(min_date, max_date)}"
         )
         request = {
@@ -429,7 +429,7 @@ class MarsClient:
         """
         time = "00:00:00/12:00:00"
         # Fetch the current date -7 days as a list of dates
-        print(
+        Utils.print(
             f"Fetching tp data for past 7 days from MARS: {self.get_date_list(min_date, max_date)}"
         )
         request = {
@@ -495,7 +495,7 @@ class MarsClient:
             days=1
         )  # Use yesterday's date to compensate for forecast delay
         date_str = current_date.strftime("%Y-%m-%d")
-        print(f"Fetching t2m forecast data from MARS for date: {date_str}")
+        Utils.print(f"Fetching t2m forecast data from MARS for date: {date_str}")
         request = {
             "class": "od",
             "date": date_str,

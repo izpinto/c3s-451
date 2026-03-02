@@ -14,8 +14,10 @@ import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
 import datetime
 import warnings
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 import matplotlib
+
+from .utils import Utils
 
 # iris doesnt work on windows
 try:
@@ -24,7 +26,8 @@ try:
     import iris.coord_categorisation # type: ignore
     import iris.util # type: ignore
 except ImportError:
-    print("cant import iris, are you on windows?")
+    Utils.print("cant import iris, are you on windows?")
+    
 
 
 
@@ -118,7 +121,7 @@ class Analogues:
             day = int(date_list[each][-2:])
             NEXT_FIELD = Analogues.pull_out_day_era(cube, year, month, day)
             if NEXT_FIELD == None:
-                print('Field failure for: ',+each)
+                Utils.print('Field failure for: ',+each)
                 n = n-1
             else:
                 if FIELD == 0:
@@ -217,7 +220,7 @@ class Analogues:
         elif isinstance(cube_list, iris.cube.CubeList):
             reg_cubes = iris.cube.CubeList([])
             for each in range(len(cube_list)):
-                # print(each)
+                # Utils.print(each)
                 subset = cube_list[each].extract(const_lat)
                 reg_cubes.append(subset.intersection(longitude=(region[3], region[2])))
                 
@@ -283,7 +286,7 @@ class Analogues:
         try:
             cube = cubes[0]
         except:
-            print("Error reading cubes for %s", var)
+            Utils.print("Error reading cubes for %s", var)
             raise FileNotFoundError
         iris.coord_categorisation.add_year(cube, 'time')
         cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
@@ -491,7 +494,7 @@ class Analogues:
         date_list = []
         time_list = []
         for i in np.arange(N):
-            #print(i)
+            #Utils.print(i)
             I = np.sort(D)[i]
             for n, each in enumerate(D):
                 if I == each:
@@ -543,7 +546,7 @@ class Analogues:
         try:
             return psi_day
         except NameError:
-            print('ERROR: Date not in data')
+            Utils.print('ERROR: Date not in data')
             return
 
     @staticmethod
@@ -607,7 +610,7 @@ class Analogues:
             day = int(date_list[each][-2:])
             NEXT_FIELD = Analogues.pull_out_day_era(psi, year, month, day)
             if NEXT_FIELD == None:
-                print('Field failure for: ',+each)
+                Utils.print('Field failure for: ',+each)
                 n = n-1
             else:
                 if FIELD == 0:
@@ -633,7 +636,7 @@ class Analogues:
         '''
 
         filename = Analogues.find_reanalysis_filename(var)
-        # print("Read file: {} for date {}".format(filename,date))
+        # Utils.print("Read file: {} for date {}".format(filename,date))
         cube = iris.load(filename, var)[0]
         cube = Analogues.extract_date(cube,date[0],date[1],date[2])
         return cube
@@ -712,7 +715,7 @@ class Analogues:
         sig_field = field_list1[0].data
         a, b = np.shape(field_list1[0].data)
         for i in range(a):
-            # print(i)
+            # Utils.print(i)
             for j in range(b):
                 loc_list1 = []; loc_list2 = []
                 for R in range(n):
@@ -756,7 +759,7 @@ class Analogues:
         sig_field = field_list[0].data
         a, b = np.shape(field_list[0].data)
         for i in range(a):
-            # print(i)
+            # Utils.print(i)
             for j in range(b):
                 loc_list = []
                 for R in range(n):
@@ -819,7 +822,7 @@ class Analogues:
             day = int(date_list[each][-2:])
             NEXT_FIELD = Analogues.pull_out_day_era(cube, year, month, day)
             if NEXT_FIELD == None:
-                print('Field failure for: ',+each)
+                Utils.print('Field failure for: ',+each)
                 n = n-1
             x.append(NEXT_FIELD)
         return x
@@ -961,7 +964,7 @@ class Analogues:
         try:
             cube = cubes[0]
         except:
-            print("Error reading cubes for %s", var)
+            Utils.print("Error reading cubes for %s", var)
             raise FileNotFoundError
         iris.coord_categorisation.add_year(cube, 'time')
         cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell <= Y2))
@@ -985,7 +988,7 @@ class Analogues:
         try:
             cube = cubes[0]
         except:
-            print("Error reading cubes for %s", path)
+            Utils.print("Error reading cubes for %s", path)
             raise FileNotFoundError
         return cube
     
@@ -1022,13 +1025,13 @@ class Analogues:
         '''
 
         filename = Analogues.find_reanalysis_filename_v2(var)
-        # print("Read file: {} for date {}".format(filename,date))
+        # Utils.print("Read file: {} for date {}".format(filename,date))
         cube = iris.load(filename, var)[0]
         cube = Analogues.extract_date(cube,date[0],date[1],date[2])
         return cube
 
     @staticmethod
-    def extract_region_shape(cube:iris.cube.Cube, shape:Polygon) -> iris.cube.Cube:
+    def extract_region_shape(cube:iris.cube.Cube, shape:Polygon, lat:str='latitude', lon:str='longitude') -> iris.cube.Cube:
         '''
         Extract Region using a shape e.g. shapefile or polygon
 
@@ -1041,7 +1044,8 @@ class Analogues:
         '''
 
         masked_cube = iris.util.mask_cube_from_shape(cube=cube, shape=shape)
-        return masked_cube
+
+        return Analogues.guess_bounds(masked_cube, lat=lat, lon=lon)
 
     @staticmethod
     def event_data_era_v2(event_data:str, date:list, ana_var:str) -> list:
@@ -1150,7 +1154,7 @@ class Analogues:
         date_list = []
 
         for i in np.arange(N):
-            #print(i)
+            #Utils.print(i)
             I = np.sort(D)[i]
             for n, each in enumerate(D):
                 if I == each:
@@ -1449,16 +1453,16 @@ class Analogues:
         ax[0].coastlines(linewidth=0.4)
         ax[0].set_title('Corr Z500')
         ax[0].gridlines(draw_labels=draw_labels)
-        Analogues.plot_box(ax[0], region)
-        Analogues.plot_box(ax[0], z500_domain)
+        Analogues.plot_region(ax[0], region)
+        Analogues.plot_region(ax[0], z500_domain)
 
         c1 = ax[1].contourf(lons, lats, slp_correlation, levels=con_lev, cmap='RdBu_r', transform=ccrs.PlateCarree())
         ax[1].add_feature(cfeature.COASTLINE)
         ax[1].coastlines(linewidth=0.4)
         ax[1].set_title('Corr MSL')
         ax[1].gridlines(draw_labels=draw_labels)
-        Analogues.plot_box(ax[1], region)
-        Analogues.plot_box(ax[1], slp_domain)
+        Analogues.plot_region(ax[1], region)
+        Analogues.plot_region(ax[1], slp_domain)
 
         fig.subplots_adjust(right=0.8)
         cax = fig.add_axes([0.85, 0.3, 0.01, 0.4])
@@ -1467,6 +1471,35 @@ class Analogues:
         plt.tight_layout()
 
         return fig, ax
+    
+    @staticmethod
+    def plot_region(axs, region):
+        """
+        Draw region on plot.
+
+        Parameters
+        ----------
+        axs : matplotlib.axes.Axes
+            The axes to draw on.
+        region : list[float], shapely.geometry.Polygon or shapely.geometry.MultiPolygon
+            Either bounding box [min_lat, max_lat, min_lon, max_lon],
+            a Polygon or a MultiPolygon.
+        """
+        if isinstance(region, list):
+            # bounding box
+            axs.plot([region[3], region[2]], [region[1], region[1]], 'k')
+            axs.plot([region[3], region[2]], [region[0], region[0]], 'k')
+            axs.plot([region[3], region[3]], [region[1], region[0]], 'k')
+            axs.plot([region[2], region[2]], [region[1], region[0]], 'k')
+
+        elif isinstance(region, Polygon):
+            x, y = region.exterior.xy
+            axs.plot(x, y, 'r', linewidth=2)
+
+        elif isinstance(region, MultiPolygon):
+            for poly in region.geoms:
+                x, y = poly.exterior.xy
+                axs.plot(x, y, 'r', linewidth=2)
 
     # Violin Plot (to visually check the result)
     @staticmethod
@@ -1790,8 +1823,8 @@ class Analogues:
                 con_lev = np.arange(0, vmax / 2, 0.2)
             # =====================================================================================
 
-            # #J : test print
-            # print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
+            # #J : test Utils.print
+            # Utils.print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
             # ##############
 
             if con_lev.size < 2:
@@ -1799,7 +1832,7 @@ class Analogues:
                 vmax = np.nanmax(event_cube.data)
 
                 if not np.isfinite(vmin) or not np.isfinite(vmax):
-                    print(f"Skipping {var}: invalid data")
+                    Utils.print(f"Skipping {var}: invalid data")
                     continue
                 
                 if vmin == vmax:
@@ -1807,8 +1840,8 @@ class Analogues:
 
                 con_lev = np.linspace(vmin, vmax, 5)
 
-            # #J : test print
-            # print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
+            # #J : test Utils.print
+            # Utils.print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
             # ##############
 
             # Plotting event
@@ -1830,12 +1863,21 @@ class Analogues:
             cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
             cbar.ax.tick_params()
             Analogues.background(ax)
-            # Plotting Change
+            # Plotting Change            
             ax= plt.subplot(len(var_list),4,(i*4)+4,projection=ccrs.PlateCarree())
             Dmax = np.round(np.nanmax(np.abs([np.nanmin((PRST_comp-PAST_comp).data), np.nanmax((PRST_comp-PAST_comp).data)])))
             diff_lev = np.linspace(-Dmax, Dmax, 41)
             c1 = ax.contourf(lons, lats, (PRST_comp-PAST_comp).data, levels=diff_lev, cmap=CMAP[1], transform=ccrs.PlateCarree(), extend='both')
-            c2 = ax.contourf(lons, lats, sig_field[i].data, levels=[-2, 0, 2], hatches=['////', None], colors='none', transform=ccrs.PlateCarree())
+
+            if sig_field is not None:
+                c2 = ax.contourf(
+                    lons, lats, sig_field[i].data,
+                    levels=[-2, 0, 2],
+                    hatches=['////', None],
+                    colors='none',
+                    transform=ccrs.PlateCarree()
+                )
+            
             cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
             cbar.ax.tick_params()
             Analogues.background(ax)
@@ -2165,9 +2207,9 @@ class Analogues:
             month = calendar.month_abbr[int(dates[each][4:-2])]
             day = int(dates[each][-2:])
 
-            # print(ana_var, [year, month, day])
+            # Utils.print(ana_var, [year, month, day])
             circ_vals.append(Analogues.extract_region(Analogues.extract_date_v2(cube_map[ana_var], [year, month, day]), region))
-            # print(haz_var, [year, month, day])
+            # Utils.print(haz_var, [year, month, day])
             haz_vals.append(Analogues.extract_region(Analogues.extract_date_v2(cube_map[haz_var], [year, month, day]), region))
 
         return circ_vals, haz_vals, n
