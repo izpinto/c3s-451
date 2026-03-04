@@ -94,3 +94,5 @@ ecmwf.ipynb
 *.pyc
 
 TestingJasper.ipynb
+
+!notebook_templates/00_BASE_DATA/*.nc
