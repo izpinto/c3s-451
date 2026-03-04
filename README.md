@@ -24,7 +24,7 @@ from  datetime  import  datetime, timedelta
 import  os
 from  c3s_event_attribution_tools.data  import  DataClient
 
-climate_data_store_token = 'aaaa-bbbb-cccc-dddd-eeee' #placeholder
+climate_data_store_token = '#######-####-####-####-############' #placeholder
 your_save_directory = os.path.join(os.getcwd(), "../data")
 bbox = (-105, 22, -100, 27)
 event_end = datetime(2024, 6, 7)
