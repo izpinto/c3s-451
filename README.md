@@ -1,11 +1,11 @@
 
 # C3S Event Attirbution Tools
 
-  This repository is for the Event Attribution Tools library for the C3S-451 project.
+This repository is for the Event Attribution Tools library for the C3S-451 project.
 
 ## Documentation:
 
-  You can find the github pages documentation site [here](https://maris-development.github.io/c3s-451/latest/)
+You can find the github pages documentation site [here](https://maris-development.github.io/c3s-451/latest/)
 
 ## Installation 
 
