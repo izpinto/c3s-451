@@ -86,13 +86,9 @@ pylint-output.txt
 *.jpeg
 *.geojson
 
-library/mars.ipynb
-ecmwf.ipynb
-
 *.nc:Zone.Identifier
 
 *.pyc
 
-TestingJasper.ipynb
 
 !notebook_templates/00_BASE_DATA/*.nc
