@@ -1,4 +1,3 @@
-data/
 library/
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -87,9 +86,9 @@ pylint-output.txt
 *.jpeg
 *.geojson
 
-library/mars.ipynb
-ecmwf.ipynb
-
 *.nc:Zone.Identifier
 
 *.pyc
+
+
+!notebook_templates/00_BASE_DATA/*.nc
