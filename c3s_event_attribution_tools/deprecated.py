@@ -18,8 +18,7 @@ from datetime import datetime, timedelta
 from typing import Union, Literal
 from .utils import Utils
 
-
-
+from .analogues import Analogues
 
 # Plot
 #===============================================================================================================================================================
@@ -520,3 +519,52 @@ def deprecated_n_day_accumulations_gdf2(
 
 
 
+# Analogues
+
+@staticmethod
+def ED_similarity(event: iris.cube.Cube, p_cube: iris.cube.Cube, region: list[float], method: str) -> list:
+    '''
+    .. Deprecated:: 0.1.0
+    Use ed_similarity instead. 
+    '''
+    return Analogues.ed_similarity(event, p_cube, region, method)
+
+@staticmethod
+def ed_similarity(event: iris.cube.Cube, p_cube: iris.cube.Cube, region: list[float], method: str) -> list:
+    
+    '''
+    Returns similarity values based on euclidean distance
+
+    Parameters:
+        event (iris.cube.Cube):
+            Cube containing the event field to be compared.
+        p_cube (iris.cube.Cube):
+            Cube containing candidate fields to compare against the event.
+        region (list[float]):
+            Region for data selecion
+        method (str):
+            Method chosen, either 'ED' or 'CC'
+
+    Returns:
+        list:
+            List of similarity values for each spatial slice in P_cube, normalised to the range [0, 1].
+    '''
+    
+    if method not in ['ED', 'CC']:
+        raise ValueError("Invalid method. Choose 'ED' for Euclidean Distance or 'CC' for Correlation Coefficient.")
+
+    var_e = Analogues.extract_region(event, region)
+    var_p = Analogues.extract_region(p_cube, region)
+    var_d = []
+    
+    for yx_slice in var_p.slices(['grid_latitude', 'grid_longitude']):
+        
+        if method == 'ED':
+            var_d.append(Analogues.euclidean_distance(yx_slice, var_e))
+        
+        elif method == 'CC':
+            var_d.append(Analogues.correlation_coeffs(yx_slice, var_e))
+    
+    ED_max = np.max(np.max(var_d))
+    
+    return [(1-x / ED_max) for x in var_d]

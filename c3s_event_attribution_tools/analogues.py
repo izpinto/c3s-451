@@ -98,7 +98,7 @@ class Analogues:
         return event_list
 
     @staticmethod
-    def composite_dates_anomaly(cube:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
+    def composite_dates_anomaly(cube: iris.cube.Cube, date_list: list) -> iris.cube.Cube:
         '''
         Returns single composite of all dates
         
@@ -130,38 +130,7 @@ class Analogues:
                     FIELD = FIELD + NEXT_FIELD
         return FIELD/n
 
-    @staticmethod
-    def ED_similarity(event:iris.cube.Cube, P_cube:iris.cube.Cube, region:list[float], method:str) -> list:
-        
-        '''
-        Returns similarity values based on euclidean distance
-
-        Parameters:
-            event (iris.cube.Cube):
-                Cube containing the event field to be compared.
-            p_cube (iris.cube.Cube):
-                Cube containing candidate fields to compare against the event.
-            region (list[float]):
-                Region for data selecion
-            method (str):
-                Method chosen, either 'ED' or 'CC'
-
-        Returns:
-            list:
-                List of similarity values for each spatial slice in P_cube, normalised to the range [0, 1].
-        '''
-
-        E = Analogues.extract_region(event, region)
-        P = Analogues.extract_region(P_cube, region)
-        D = []
-        for yx_slice in P.slices(['grid_latitude', 'grid_longitude']):
-            if method == 'ED':
-                D.append(Analogues.euclidean_distance(yx_slice, E))
-            elif method == 'CC':
-                D.append(Analogues.correlation_coeffs(yx_slice, E))
-        ED_max = np.max(np.max(D))
-        S = [(1-x / ED_max) for x in D]
-        return S
+    
 
     @staticmethod
     def regrid(original:iris.cube.Cube, new:iris.cube.Cube) -> iris.cube.Cube:
@@ -187,9 +156,12 @@ class Analogues:
         return new_cube
 
     @staticmethod
-    def extract_region(cube_list:iris.cube.Cube|iris.cube.CubeList,
-                       region:list[float], lat:str='latitude', lon:str='longitude'
-                       ) -> tuple[iris.cube.Cube|iris.cube.CubeList, str, str]:
+    def extract_region(
+        cube_list: iris.cube.Cube|iris.cube.CubeList,
+        region: list[float], 
+        lat: str='latitude', 
+        lon: str='longitude'
+    ) -> tuple[iris.cube.Cube|iris.cube.CubeList, str, str]:
         '''
         Extract region using boundering box (defaults to Europe)
 
@@ -443,10 +415,10 @@ class Analogues:
         weights = iris.analysis.cartography.area_weights(E)
         E = E*weights
         for i, each in enumerate(date_list):
-            yr = int(date_list[i][:4])
-            mon = calendar.month_abbr[int(date_list[i][4:-2])]
+            year = int(date_list[i][:4])
+            month = calendar.month_abbr[int(date_list[i][4:-2])]
             day = int(date_list[i][-2:])
-            field = Analogues.extract_region(Analogues.pull_out_day_era(reanalysis_cubelist, yr, mon, day), region)
+            field = Analogues.extract_region(Analogues.pull_out_day_era(reanalysis_cubelist, year, month, day), region)
             field = field*weights
             b, c = np.shape(field)
             XA = E.data.reshape(b*c,1)
@@ -488,24 +460,26 @@ class Analogues:
             year,month,day,time = cube_date
             return str(year)+str(month).zfill(2)+str(day).zfill(2), time
         
-        E = Analogues.extract_region(event, region)
+        var_e = Analogues.extract_region(event, region)
         reanalysis_cube = Analogues.extract_region(reanalysis_cube, region)
-        D = Analogues.euclidean_distance(reanalysis_cube, E)
+        var_d = Analogues.euclidean_distance(reanalysis_cube, var_e)
         date_list = []
-        time_list = []
+        final_date_list = []
+        
         for i in np.arange(N):
             #Utils.print(i)
-            I = np.sort(D)[i]
-            for n, each in enumerate(D):
-                if I == each:
+            var_i = np.sort(var_d)[i]
+            for n, each in enumerate(var_d):
+                if var_i == each:
                     a1 = n
             date, time = cube_date_to_string(Analogues.cube_date(reanalysis_cube[a1,...]))
             date_list.append(date)
-            date_list2 = Analogues.date_list_checks(date_list, days_apart=5)
-        return date_list2
+            final_date_list = Analogues.date_list_checks(date_list, days_apart=5)
+            
+        return final_date_list
 
     @staticmethod
-    def pull_out_day_era(psi:iris.cube.Cube, sel_year:int, sel_month:str|int, sel_day:int) -> iris.cube.Cube|None:
+    def pull_out_day_era(psi: iris.cube.Cube, sel_year: int, sel_month: str|int, sel_day: int) -> iris.cube.Cube|None:
 
         """
         Extract a single daily field for a given date from ERA reanalysis data.
@@ -530,8 +504,10 @@ class Analogues:
                 Or None if the requested date is not present in the data.
                 
         """
-
-        if type(psi)==iris.cube.Cube:
+        
+        psi_day = None
+        
+        if type(psi) == iris.cube.Cube:
             psi_day = Analogues.extract_date(psi, sel_year, sel_month, sel_day)
         else:
             for each in psi:
@@ -550,7 +526,7 @@ class Analogues:
             return
 
     @staticmethod
-    def extract_date(cube:iris.cube.Cube, yr:int, mon:str|int, day:int) -> iris.cube.Cube:
+    def extract_date(cube: iris.cube.Cube, year: int, month: str|int, day: int) -> iris.cube.Cube:
         '''
         Extract specific day from cube of a single year
 
@@ -580,7 +556,7 @@ class Analogues:
             pass
         else:
             iris.coord_categorisation.add_day_of_month(cube, 'time')
-        return cube.extract(iris.Constraint(year=yr, month=mon, day_of_month=day))
+        return cube.extract(iris.Constraint(year=year, month=month, day_of_month=day))
 
     @staticmethod
     def composite_dates(psi:iris.cube.Cube, date_list:list) -> iris.cube.Cube:
@@ -1105,8 +1081,8 @@ class Analogues:
             iris.cube.Cube: Subsetted cube
         '''
 
-        yr = date[0]
-        mon = date[1]
+        year = date[0]
+        month = date[1]
         day = date[2]
 
         if len(cube.coords('year')) > 0:
@@ -1121,7 +1097,7 @@ class Analogues:
             pass
         else:
             iris.coord_categorisation.add_day_of_month(cube, 'time')
-        return cube.extract(iris.Constraint(year=yr, month=mon, day_of_month=day))
+        return cube.extract(iris.Constraint(year=year, month=month, day_of_month=day))
 
     @staticmethod
     def analogue_dates_v3(daily_cube:iris.cube.Cube, event_cube:iris.cube.Cube, N:int) -> list:
@@ -1951,7 +1927,7 @@ class Analogues:
 
         '''
 
-        # Plot timeseries with linear trends and 10-yr rolling means
+        # Plot timeseries with linear trends and 10-year rolling means
         fig, ax = plt.subplots(1, 1, figsize = fig_size)
 
         # linear trends

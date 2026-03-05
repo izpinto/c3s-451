@@ -150,7 +150,7 @@ class Plot:
                 The maximum precipitation value in the dataset.
 
         Returns:
-            numpy.ndarray:
+            data (numpy.ndarray):
                 An array of precipitation bin boundaries.
         '''
         if vmax <= 15:
@@ -169,7 +169,7 @@ class Plot:
 
     # get colormap
     @staticmethod
-    def get_colormap(map:str, vmin:float, vmax:float, value_col:str=None) -> tuple[str|ListedColormap, BoundaryNorm|TwoSlopeNorm]: 
+    def get_colormap(map:str, vmin:float, vmax:float, value_col:str|None=None) -> tuple[str|ListedColormap, BoundaryNorm|TwoSlopeNorm]: 
         '''
         Retrieves the appropriate colormap and normalization for plotting based on the data type.
 
@@ -449,7 +449,7 @@ class Plot:
                 Matplotlib colormap name. Defaults to None (inferred from `value_col`).
             fig_size (tuple[int, int], optional):
                 Matplotlib figure size (width, height) in inches. Defaults to (7, 5).
-            polygons (list[Polygon] | None, optional)
+            polygons (list[Polygon] | None, optional):
                  A list of shapely Polygon objects to overlay on the map
                  (e.g., study area boundaries). Defaults to None.
             projection (cartopy.crs, optional):
@@ -468,7 +468,7 @@ class Plot:
                 An existing Matplotlib Axes object to plot onto. Defaults to None.
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The Matplotlib Axes object with the map.
@@ -1135,7 +1135,7 @@ class Plot:
                 and {value_col}_ci_upper
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The Matplotlib Axes object with the time series plot.
@@ -1279,7 +1279,7 @@ class Plot:
                 the total number of plots. Defaults to 0.
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The last Matplotlib Axes object used for plotting (or the single Axes if only one plot).
@@ -1794,10 +1794,18 @@ class Plot:
         return fig, ax
     
     @staticmethod
-    def plot_seasonal_cycles(seasonal_cycles, obs_seasonal_cycle, value_col:str,
-                          legend_title:str=None, title:str=None, cmap:str=None, add_logos:bool=True,
-                          projection:cartopy.crs=ccrs.PlateCarree(), dpi:int=100,
-                          subtitle:bool=True):
+    def plot_seasonal_cycles(
+            seasonal_cycles, 
+            obs_seasonal_cycle, 
+            value_col:str,
+            legend_title:str|None=None, 
+            title:str|None=None, 
+            cmap:str|None=None, #unused? 
+            add_logos:bool=True,
+            projection:cartopy.crs=ccrs.PlateCarree(), #unused?
+            dpi:int=100, #unused?
+            subtitle:bool=True
+        ):
         
         '''
         Plots seasonal cycles for multiple models alongside observational data.
@@ -1814,13 +1822,13 @@ class Plot:
                 The variable name/column in the datasets to plot (e.g., 't2m', 'tp').
             legend_title (str | None, optional):
                 The title for the overall figure legend. Defaults to None.
-            add_logs (bool, optional):
+            add_logos (bool, optional):
                 Whether to add a custom image/logo below the plot. Defaults to True.
             subtitle (bool, optional):
                 Whether to add a subtitle to the figure. Defaults to True.
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The Matplotlib Axes object with the seasonal cycle plots.

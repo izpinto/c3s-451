@@ -317,8 +317,8 @@ class CDSClient():
                 and statistic metadata.
             bbox (tuple[float, float, float, float]):
                 Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
-            time_range (tuple[datetime, datetime]):
-                The full temporal range (start, end) for which to fetch data.
+            time_ranges (list[tuple[datetime, datetime]]):
+                A list of temporal ranges (start, end) for which to fetch data.
             levels (list[int]):
                 A list of pressure levels (in hPa) to retrieve.
 
@@ -470,8 +470,8 @@ class CDSClient():
                 and statistic metadata.
             bbox (tuple[float, float, float, float]):
                 Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
-            time_range (tuple[datetime, datetime]):
-                The full temporal range (start, end) for which to fetch data.
+            time_ranges (list[tuple[datetime, datetime]]):
+                A list of temporal ranges (start, end) for which to fetch data.
 
         Returns:
             gpd.GeoDataFrame: A GeoDataFrame containing the single-level data 
@@ -510,8 +510,8 @@ class CDSClient():
                 and statistic metadata.
             bbox (tuple[float, float, float, float]):
                 Bounding box coordinates as (min_longitude, min_latitude, max_longitude, max_latitude).
-            time_range (tuple[datetime, datetime]):
-                The full temporal range (start, end) for which to fetch data.
+            time_ranges (list[tuple[datetime, datetime]]):
+                A list of temporal ranges (start, end) for which to fetch data.
 
         Returns:
             xr.Dataset: An xarray Dataset containing the combined and time-filtered 

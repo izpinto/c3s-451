@@ -54,7 +54,7 @@ class Process:
 
 
         Returns:
-            GeoDataFrame:
+            data (GeoDataFrame):
                 Same structure as input: longitude, latitude, valid_time, value_col, geometry
         '''
         gdf = gdf.copy()
@@ -117,9 +117,13 @@ class Process:
 
 
     @staticmethod
-    def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDataFrame,
-                          value_col:str, calcation:Literal["absolute", "relative"], datetime_col:str="valid_time"
-                          ):
+    def calculate_anomaly(
+        event_gdf: gpd.GeoDataFrame, 
+        mean_climatology_gdf: gpd.GeoDataFrame,
+        value_col: str, 
+        calcation: Literal["absolute", "relative"], 
+        datetime_col: str = "valid_time"
+    ):
         '''
         Calculate anomalies by subtracting/dividing event data from climatology means.
 
@@ -137,7 +141,7 @@ class Process:
 
 
         Returns:
-            GeoDataFrame:
+            data (GeoDataFrame):
                 Same structure as input with anomaly values in value_col.
         '''
         event_gdf = event_gdf.copy()
@@ -292,7 +296,7 @@ class Process:
                 DataFrame or GeoDataFrame
             value_col (str, required):
                 Name of the column to roll
-            windown (int, required):
+            window (int, required):
                 Size of the rolling window
             centering (bool, optional):
                 If True, window is centered on each point.
@@ -535,7 +539,7 @@ class Process:
         Calculate mean values grouped by specified columns.
 
         Parameters:
-            df (gpd.GeoDataFrame | xr.DataArray | xr.Dataset, required):
+            gdf (gpd.GeoDataFrame | xr.DataArray | xr.Dataset, required):
                 Input data.
             value_col (str, required):
                 Column with numeric values (for GeoDataFrame).
@@ -657,13 +661,13 @@ class Process:
             method (str, optional):
                 Rolling method: 'mean', 'sum', 'std', or 'quantile' (default: 'mean').
             
-            Returns:
-                gpd.GeoDataFrame:
-                    Yearly values as specified by `yearly_value`.
+        Returns:
+            data (gpd.GeoDataFrame):
+                Yearly values as specified by `yearly_value`.
 
-            Raises:
-                ValueError:
-                    If `yearly_value` is not 'mean', 'max', or 'min'.
+        Raises:
+            ValueError:
+                If `yearly_value` is not 'mean', 'max', or 'min'.
         '''
 
         # calculate running mean. if padding == 1 gdf gets automatically returned

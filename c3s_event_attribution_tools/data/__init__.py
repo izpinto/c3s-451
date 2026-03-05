@@ -724,9 +724,6 @@ class DataClient():
                 Bounding box coordinates as (min_lon, min_lat, max_lon, max_lat).
             time_range (tuple[datetime, datetime]):
                 Start and end datetime for the data request.
-            months (list[str] | list[int] | None, optional):
-                Months to filter data. Can be month names (full or abbreviated) or integers (1–12).
-                Defaults to None (all months included).
             from_unit (str | None, optional):
                 Unit to convert from. If None, no conversion is applied.
             to_unit (str | None, optional):

@@ -45,15 +45,15 @@ class Utils:
     """Utility class for various geospatial & temporal data operations, including region selection and data manipulation, splitting time ranges, etc."""
 
     @staticmethod
-    def get_save_directory(dir:str="data", relative:bool=True, makedir:bool=True) -> str :
+    def get_save_directory(dir: str="data", relative: bool=True, makedir: bool=True) -> str :
         '''
         Get (and) create a directory path for saving files.
 
         Parameters:
-            subfolder (str):
+            dir (str):
                 directory name or path ('data' by default relative to the current working directory)
             relative (bool):
-                whether the subfolder is relative to the current working directory (True by default)
+                whether the directory is relative to the current working directory (True by default)
             makedir (bool):
                 whether to create the directory if it does not exist (True by default)
 
@@ -182,7 +182,7 @@ class Utils:
                 Additional parameters to pass to the region picker service. Defaults to None.
 
         Returns:
-            Dict[str, Any]:
+            polygon (Dict[str, Any]):
                 The GeoJSON polygon data of the selected region upon successful completion.
 
         Raises:
@@ -269,8 +269,8 @@ class Utils:
                 longitude and latitude coordinates.
 
         Returns:
-            xarray.Dataset|xarray.DataArray: The dataset with longitudes wrapped to -180° to 180°
-                and sorted coordinates.
+            data (xarray.Dataset|xarray.DataArray): 
+                The dataset with longitudes wrapped to -180° to 180° and sorted coordinates.
         '''
         if "longitude" in ds.coords:
             lon = "longitude"
@@ -304,7 +304,7 @@ class Utils:
                 defining a polygon exterior ring.
 
         Returns:
-            tuple[list[Polygon],list[list[float]]]:
+            data (tuple[list[Polygon],list[list[float]]]):
                 A tuple containing:
                 - polygons: A list of shapely.geometry.Polygon objects.
                 - all_coords: A flattened list of all [longitude, latitude] coordinate pairs
@@ -354,7 +354,7 @@ class Utils:
                 to small squares/polygons for raster-like appearance. Defaults to 's' (square).
 
         Returns:
-            str:
+            image (str):
                 A base64-encoded PNG image string of the generated plot.
         '''
 
