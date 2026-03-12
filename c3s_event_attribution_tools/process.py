@@ -20,102 +20,6 @@ from rpy2.robjects import r
 
 class Process:
 
-    # Don't use
-    @staticmethod
-    def calculate_mean_gdf(
-        gdf:gpd.GeoDataFrame, 
-        date_range: pd.core.arrays.datetimes.DatetimeArray,  # pyright: ignore[reportAttributeAccessIssue]
-        value_col: str, 
-        datetime_col: str="valid_time", 
-        padding: int=15,
-        year_range: None|tuple[int, int]=None, 
-        group_by: list[str]=["longitude", "latitude", "geometry"]
-    ):
-        '''
-        Calculate mean climatology values around each date in date_range across years,
-        returning a GeoDataFrame with the same structure as the input.
-
-        Parameters:
-            gdf (GeoDataFrame, required):
-                Historical data with datetime and geometry.
-            date_range (pd.DatetimeIndex, required):
-                Dates for which to calculate climatology means.
-            value_col (str, required):
-                Column with numeric values.
-            datetime_col (str, optional):
-                Column with datetimes.
-            padding (int, optional):
-                +/- days for the averaging window.
-            year_range (tuple[int, int], optional):
-                Year range to consider (start_year, end_year).
-            group_by (list[str], optional):
-                Columns to group by when averaging. If None, averages globally.
-                Default groups by: longitude, latitude, geometry.
-
-
-        Returns:
-            data (GeoDataFrame):
-                Same structure as input: longitude, latitude, valid_time, value_col, geometry
-        '''
-        gdf = gdf.copy()
-        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-
-        # Filter by year range if specified
-        if year_range is not None:
-            start_year, end_year = year_range
-            gdf = gdf[(gdf[datetime_col].dt.year >= start_year) & (gdf[datetime_col].dt.year <= end_year)]
-
-        climatology = []
-
-        date_min = gdf[datetime_col].min()
-        date_max = gdf[datetime_col].max()
-
-        for target_date in date_range:
-            results = []
-            for year in gdf[datetime_col].dt.year.unique():
-                try:
-                    center_date = datetime(year, target_date.month, target_date.day)
-                except ValueError:
-                    # should we skip feb 29? use 28 instead? or use next day?
-                    continue
-
-                # skip if center_date not in gdf
-                if pd.Timestamp(center_date) not in gdf[datetime_col].values:
-                    Utils.print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
-                    continue
-
-                # range should never exceed data range
-                start = max(center_date - timedelta(days=padding), date_min)
-                end = min(center_date + timedelta(days=padding), date_max)
-
-                subset = gdf[(gdf[datetime_col] >= start) & (gdf[datetime_col] <= end)]
-                results.append(subset)
-
-            combined = pd.concat(results, ignore_index=True)
-
-            # Average per geometry
-            if group_by:
-                mean_gdf = combined.groupby(group_by)[value_col].mean().reset_index()
-            else:
-                mean_val = combined[value_col].mean()
-                mean_gdf = pd.DataFrame({
-                    value_col: [mean_val],
-                    datetime_col: [target_date]
-                })
-
-            # Assign the target date as valid_time
-            mean_gdf[datetime_col] = target_date
-
-            climatology.append(mean_gdf)
-
-        climatology_gdf = gpd.GeoDataFrame(
-            pd.concat(climatology, ignore_index=True),
-            geometry="geometry",
-            crs=gdf.crs
-        )
-        return climatology_gdf
-
-
     @staticmethod
     def calculate_anomaly(
         event_gdf: gpd.GeoDataFrame, 
@@ -131,7 +35,7 @@ class Process:
             event_gdf (GeoDataFrame, required):
                 Event data with same structure as climatology.
             mean_climatology_gdf (GeoDataFrame, required):
-                Mean climatology from `calculate_mean_gdf`.
+                Mean climatology.
             value_col (str, required):
                 Column with numeric values to adjust.
             calcation (Literal["absolute", "relative"], required):
@@ -779,12 +683,12 @@ class Process:
                 Polygons after Köppen–Geiger filtering.
         '''
         KG_GROUPS = {
-            "Tropical": [1,2,3],
-            "Arid": [4,5,6,7],
-            "Temperate": list(range(8,17)),
-            "Cold": list(range(17,29)),
-            "Polar": [29,30]
+            "Tropical": [1,2,3], "Arid": [4,5,6,7], "Temperate": list(range(8,17)), "Cold": list(range(17,29)), "Polar": [29,30]
         }
+        KG_SUBCLASSES = {"Af": [1],"Am": [2],"Aw": [3],"BWh": [4],"BWk": [5],"BSh": [6],"BSk": [7],"Csa": [8],"Csb": [9],"Csc": [10],"Cwa": [11],"Cwb": [12],
+                        "Cwc": [13],"Cfa": [14],"Cfb": [15],"Cfc": [16],"Dsa": [17],"Dsb": [18],"Dsc": [19],"Dsd": [20],"Dwa": [21],"Dwb": [22],"Dwc": [23],
+                        "Dwd": [24],"Dfa": [25],"Dfb": [26],"Dfc": [27],"Dfd": [28],"ET": [29],"EF": [30],
+                        }
 
         # Normalize category input
         if isinstance(category, str):
@@ -793,7 +697,12 @@ class Process:
         # Combine all selected codes
         codes = []
         for c in category:
-            codes.extend(KG_GROUPS[c])
+            if c in KG_GROUPS:
+                codes.extend(KG_GROUPS[c])
+            elif c in KG_SUBCLASSES:
+                codes.extend(KG_SUBCLASSES[c])
+            else:
+                raise ValueError(f"Unknown Köppen category: {c}")
 
         adjusted_polygons = []  # Start with an empty geometry
 

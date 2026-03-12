@@ -352,6 +352,99 @@ def deprecated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:s
 # Process
 #===============================================================================================================================================================
 
+def deprecated_calculate_mean_gdf(
+    gdf:gpd.GeoDataFrame, 
+    date_range: pd.core.arrays.datetimes.DatetimeArray,  # pyright: ignore[reportAttributeAccessIssue]
+    value_col: str, 
+    datetime_col: str="valid_time", 
+    padding: int=15,
+    year_range: None|tuple[int, int]=None, 
+    group_by: list[str]=["longitude", "latitude", "geometry"]
+):
+    '''
+    Calculate mean climatology values around each date in date_range across years,
+    returning a GeoDataFrame with the same structure as the input.
+
+    Parameters:
+        gdf (GeoDataFrame, required):
+            Historical data with datetime and geometry.
+        date_range (pd.DatetimeIndex, required):
+            Dates for which to calculate climatology means.
+        value_col (str, required):
+            Column with numeric values.
+        datetime_col (str, optional):
+            Column with datetimes.
+        padding (int, optional):
+            +/- days for the averaging window.
+        year_range (tuple[int, int], optional):
+            Year range to consider (start_year, end_year).
+        group_by (list[str], optional):
+            Columns to group by when averaging. If None, averages globally.
+            Default groups by: longitude, latitude, geometry.
+
+
+    Returns:
+        data (GeoDataFrame):
+            Same structure as input: longitude, latitude, valid_time, value_col, geometry
+    '''
+    gdf = gdf.copy()
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+    # Filter by year range if specified
+    if year_range is not None:
+        start_year, end_year = year_range
+        gdf = gdf[(gdf[datetime_col].dt.year >= start_year) & (gdf[datetime_col].dt.year <= end_year)]
+
+    climatology = []
+
+    date_min = gdf[datetime_col].min()
+    date_max = gdf[datetime_col].max()
+
+    for target_date in date_range:
+        results = []
+        for year in gdf[datetime_col].dt.year.unique():
+            try:
+                center_date = datetime(year, target_date.month, target_date.day)
+            except ValueError:
+                # should we skip feb 29? use 28 instead? or use next day?
+                continue
+
+            # skip if center_date not in gdf
+            if pd.Timestamp(center_date) not in gdf[datetime_col].values:
+                Utils.print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
+                continue
+
+            # range should never exceed data range
+            start = max(center_date - timedelta(days=padding), date_min)
+            end = min(center_date + timedelta(days=padding), date_max)
+
+            subset = gdf[(gdf[datetime_col] >= start) & (gdf[datetime_col] <= end)]
+            results.append(subset)
+
+        combined = pd.concat(results, ignore_index=True)
+
+        # Average per geometry
+        if group_by:
+            mean_gdf = combined.groupby(group_by)[value_col].mean().reset_index()
+        else:
+            mean_val = combined[value_col].mean()
+            mean_gdf = pd.DataFrame({
+                value_col: [mean_val],
+                datetime_col: [target_date]
+            })
+
+        # Assign the target date as valid_time
+        mean_gdf[datetime_col] = target_date
+
+        climatology.append(mean_gdf)
+
+    climatology_gdf = gpd.GeoDataFrame(
+        pd.concat(climatology, ignore_index=True),
+        geometry="geometry",
+        crs=gdf.crs
+    )
+    return climatology_gdf
+
 def deprecated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time'):
     # Ensure datetime columns
     final_gdf = final_gdf.copy()
@@ -507,10 +600,106 @@ def deprecated_n_day_accumulations_gdf2(
 # Util
 #===============================================================================================================================================================
 
+def deprecated_get_save_directory(dir: str="data", relative: bool=True, makedir: bool=True) -> str :
+        '''
+        Get (and) create a directory path for saving files.
 
+        Parameters:
+            dir (str):
+                directory name or path ('data' by default relative to the current working directory)
+            relative (bool):
+                whether the directory is relative to the current working directory (True by default)
+            makedir (bool):
+                whether to create the directory if it does not exist (True by default)
 
+        Returns:
+            str: The absolute path to the save directory.
+        '''
 
+        CURRENT_DIRECTORY = os.getcwd()
+        your_save_directory = os.path.abspath(os.path.join(CURRENT_DIRECTORY, dir)) if relative else dir
 
+        if makedir:
+            os.makedirs(your_save_directory, exist_ok=True)
+
+        return your_save_directory
+
+def deprecated_split_time_range_by_year_and_months(
+        start: datetime,
+        end: datetime,
+        months: list[str]|list[int]
+    ) -> list[tuple[datetime, datetime]]:
+        '''
+        Split a time range into sub-ranges filtered by specific months.
+
+        This helper method iterates through the time period between start and end,
+        extracting intervals that fall within the requested months. Each resulting
+        tuple represents a continuous range within a single calendar month.
+
+        Parameters:
+            start (datetime):
+                The beginning of the overall time range.
+            end (datetime):
+                The end of the overall time range.
+            months (list[str] | list[int]):
+                A list of months to include, provided as integers (1-12) or 
+                strings.
+        
+        Returns:
+            list[tuple[datetime, datetime]]: A list of time ranges as tuples of 
+            (start_date, end_date) defining the periods within the specified months.
+        '''
+        result = []
+
+        def last_day_of_month(dt: datetime) -> datetime:
+            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
+            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
+        
+        current = datetime(start.year, start.month, start.day)
+
+        while current <= end:
+            if current.month in months:
+                month_start = current
+                month_end = last_day_of_month(current)
+
+                actual_start = max(month_start, start)
+                actual_end = min(month_end, end)
+
+                if actual_start <= actual_end:
+                    result.append((actual_start, actual_end))
+                
+            if current.month == 12:
+                current = datetime(current.year + 1, 1, 1)
+            else:
+                current = datetime(current.year, current.month + 1, 1)
+        
+        return result
+
+def deprecated_shift_datetime_by_months(gdf:gpd.GeoDataFrame, shift_by:int, datetime_col:str='valid_time', direction:str='forward') -> gpd.GeoDataFrame:
+        '''
+        Shifts the datetime values in a specified column forward or backward by a given number of months.
+
+        Parameters:
+            gdf (gpd.GeoDataFrame, required):
+                The input GeoDataFrame.
+            shift_by (int, required):
+                The number of months by which to shift the dates.
+            datetime_col (str, optional):
+                The column name containing datetime objects to be shifted.
+            direction (str, optional):
+                The direction of the shift. Must be 'forward' (increase date) or 'backward' (decrease date). Defaults to 'forward'.
+
+        Returns:
+            gpd.GeoDataFrame: A copy of the input GeoDataFrame with the datetime column shifted.
+        '''
+        n_direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
+
+        gdf = gdf.copy()
+
+        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * n_direction
+
+        return gdf
 
 # Data
 #===============================================================================================================================================================

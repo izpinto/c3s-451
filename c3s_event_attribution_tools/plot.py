@@ -1390,7 +1390,7 @@ class Plot:
                          shared_colorbar:bool=True,
                          add_logos:bool=True,
                          polygon_color:str='cyan',
-                         contour_steps:int=200,
+                         contour_steps:int=2,
                          projection:cartopy.crs=ccrs.PlateCarree(),
                          grid_line_col:str='gray',
                          grid_line_size:float=.4,
@@ -1448,7 +1448,7 @@ class Plot:
             polygon_color (str, optional):
                 Color for the overlaid polygons. Defaults to 'cyan'.
             contour_steps (int, optional):
-                The interval between contour lines (e.g., 200 meters for Z500). Defaults to 200.
+                The interval between contour lines (e.g., 2 dam for Z500). Defaults to 2.
             projection (cartopy.crs, optional):
                 The Cartopy CRS for plotting data. Defaults to ccrs.PlateCarree().
             grid_line_col (str, optional):
