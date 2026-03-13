@@ -20,11 +20,6 @@ Then push the tag: (this will update documentation with github actions)
 ```bash
 git push origin --tags 
 ```
-Or to push changes + tags:
-```bash
-git push origin main --follow-tags
-```
-
 
 1. **Build and Publish**:
 From your project root, run:
