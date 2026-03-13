@@ -40,88 +40,8 @@ class Utils:
         # 4. Call the real Utils.print
         # We put the prefix first, then the original arguments
         print(prefix, *args, **kwargs)
-    
-    
-    """Utility class for various geospatial & temporal data operations, including region selection and data manipulation, splitting time ranges, etc."""
 
-    @staticmethod
-    def get_save_directory(dir: str="data", relative: bool=True, makedir: bool=True) -> str :
-        '''
-        Get (and) create a directory path for saving files.
 
-        Parameters:
-            dir (str):
-                directory name or path ('data' by default relative to the current working directory)
-            relative (bool):
-                whether the directory is relative to the current working directory (True by default)
-            makedir (bool):
-                whether to create the directory if it does not exist (True by default)
-
-        Returns:
-            str: The absolute path to the save directory.
-        '''
-
-        CURRENT_DIRECTORY = os.getcwd()
-        your_save_directory = os.path.abspath(os.path.join(CURRENT_DIRECTORY, dir)) if relative else dir
-
-        if makedir:
-            os.makedirs(your_save_directory, exist_ok=True)
-
-        return your_save_directory
-
-    @staticmethod
-    def split_time_range_by_year_and_months(
-        start: datetime,
-        end: datetime,
-        months: list[str]|list[int]
-    ) -> list[tuple[datetime, datetime]]:
-        '''
-        Split a time range into sub-ranges filtered by specific months.
-
-        This helper method iterates through the time period between start and end,
-        extracting intervals that fall within the requested months. Each resulting
-        tuple represents a continuous range within a single calendar month.
-
-        Parameters:
-            start (datetime):
-                The beginning of the overall time range.
-            end (datetime):
-                The end of the overall time range.
-            months (list[str] | list[int]):
-                A list of months to include, provided as integers (1-12) or 
-                strings.
-        
-        Returns:
-            list[tuple[datetime, datetime]]: A list of time ranges as tuples of 
-            (start_date, end_date) defining the periods within the specified months.
-        '''
-        result = []
-
-        def last_day_of_month(dt: datetime) -> datetime:
-            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
-            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
-        
-        current = datetime(start.year, start.month, start.day)
-
-        while current <= end:
-            if current.month in months:
-                month_start = current
-                month_end = last_day_of_month(current)
-
-                actual_start = max(month_start, start)
-                actual_end = min(month_end, end)
-
-                if actual_start <= actual_end:
-                    result.append((actual_start, actual_end))
-                
-            if current.month == 12:
-                current = datetime(current.year + 1, 1, 1)
-            else:
-                current = datetime(current.year, current.month + 1, 1)
-        
-        return result
-    
-    
     @staticmethod
     def split_time_range_by_year(
         start: datetime,
@@ -679,32 +599,6 @@ class Utils:
 
         return gdf
 
-    @staticmethod
-    def shift_datetime_by_months(gdf:gpd.GeoDataFrame, shift_by:int, datetime_col:str='valid_time', direction:str='forward') -> gpd.GeoDataFrame:
-        '''
-        Shifts the datetime values in a specified column forward or backward by a given number of months.
-
-        Parameters:
-            gdf (gpd.GeoDataFrame, required):
-                The input GeoDataFrame.
-            shift_by (int, required):
-                The number of months by which to shift the dates.
-            datetime_col (str, optional):
-                The column name containing datetime objects to be shifted.
-            direction (str, optional):
-                The direction of the shift. Must be 'forward' (increase date) or 'backward' (decrease date). Defaults to 'forward'.
-
-        Returns:
-            gpd.GeoDataFrame: A copy of the input GeoDataFrame with the datetime column shifted.
-        '''
-        n_direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
-
-        gdf = gdf.copy()
-
-        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * n_direction
-
-        return gdf
 
     @staticmethod
     def get_value_col(parameter:str) -> str:

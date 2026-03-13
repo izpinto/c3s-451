@@ -392,9 +392,6 @@ class Plot:
         if save_path is not None:
             fig.savefig(save_path, bbox_inches="tight", dpi=fig.dpi)
 
-        clear_output(wait=True)
-        display(fig)
-
         return fig, ax_img
 
 
@@ -1390,7 +1387,7 @@ class Plot:
                          shared_colorbar:bool=True,
                          add_logos:bool=True,
                          polygon_color:str='cyan',
-                         contour_steps:int=200,
+                         contour_steps:int=2,
                          projection:cartopy.crs=ccrs.PlateCarree(),
                          grid_line_col:str='gray',
                          grid_line_size:float=.4,
@@ -1448,7 +1445,7 @@ class Plot:
             polygon_color (str, optional):
                 Color for the overlaid polygons. Defaults to 'cyan'.
             contour_steps (int, optional):
-                The interval between contour lines (e.g., 200 meters for Z500). Defaults to 200.
+                The interval between contour lines (e.g., 2 dam for Z500). Defaults to 2.
             projection (cartopy.crs, optional):
                 The Cartopy CRS for plotting data. Defaults to ccrs.PlateCarree().
             grid_line_col (str, optional):
@@ -2175,7 +2172,42 @@ class Plot:
             return fig, axs_flat, img_ax
         else:
             return fig, axs_flat, None
-    
+        
+    @staticmethod
+    def plot_two_figures( file_left, file_right, add_logos=True, title_fig1=None, title_fig2=None, title=None):
+        """
+        Plots two figures side-by-side with an optional logo footer.
+        """
+        # Create a figure with only 1 row for the data plots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7), facecolor='white')
+        axs_flat = [ax1, ax2]
+
+        # Load and display main images
+        img1 = mpimg.imread(file_left)
+        img2 = mpimg.imread(file_right)
+        
+        ax1.imshow(img1)
+        ax1.axis('off')
+        if title_fig1:
+            ax1.set_title(title_fig1, fontsize=16, fontweight='bold', y=0.9)
+
+        ax2.imshow(img2)
+        ax2.axis('off')
+        if title_fig2:
+            ax2.set_title(title_fig2, fontsize=16, fontweight='bold', y=0.9)
+
+        if title:   
+            fig.suptitle(title, fontsize=18, y=0.93)
+
+        plt.tight_layout()
+
+        # Logos and Return
+        img_ax = None
+        if add_logos:
+            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
+
+        plt.close(fig)
+        return fig, axs_flat, img_ax
     
 class KoppenGeiger:
 
@@ -2285,3 +2317,4 @@ class KoppenGeiger:
                 y -= 0.05
 
         return ax
+    
