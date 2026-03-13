@@ -351,6 +351,77 @@ def deprecated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:s
 
 # Process
 #===============================================================================================================================================================
+def deprecated_calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
+    '''
+    Calculate daily climatology values across years for each day of year (1-365), using a ±pad-day window.
+
+    Parameters:
+        gdf (gpd.GeoDataFrame, required):
+            Input data with datetime and geometry.
+        value_col (str, required):
+            Column with numeric values.
+        event_date (datetime, required):
+            Date of the event (used to set year for output datetimes).
+        padding (int, optional):
+            Number of days on either side to include in the window (default: 15 → 30-day window)
+        datetime_col (str, optional):
+            Column with datetimes.
+
+    Returns:
+        gpd.GeoDataFrame
+    '''
+
+    gdf = gdf.copy()
+
+    # Ensure 'time' column is datetime
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+    # Boolean mask: keep all rows NOT Feb 29
+    mask = ~((gdf[datetime_col].dt.month == 2) & (gdf[datetime_col].dt.day == 29))
+
+    # Apply mask
+    gdf = gdf[mask]
+
+    days = np.arange(1, 366)  # Days of year
+
+    gdf['doy'] = gdf[datetime_col].dt.dayofyear
+
+    gdf['longitude'] = gdf.geometry.x
+    gdf['latitude'] = gdf.geometry.y
+
+    result_list = []
+
+    doy_mean_gdf = pd.DataFrame()  # Initialize empty DataFrame to store results
+    
+    for day in days:
+        # Build ±pad-day window (cyclically)
+        window_days = [(day + offset - 1) % 365 + 1 for offset in range(-padding, padding + 1)]
+
+        window_data = gdf[gdf['doy'].isin(window_days)]
+
+        # Compute mean at each location
+        daily_mean = (
+            window_data.groupby(['longitude', 'latitude'])[value_col]
+            .mean()
+            .reset_index()
+        )
+
+        daily_mean['doy'] = day
+        result_list.append(daily_mean)
+        doy_mean_gdf = pd.concat(result_list, ignore_index=True)
+
+    # Turn dataframe back into a gpd
+    return_gdf = gpd.GeoDataFrame(
+        doy_mean_gdf, 
+        geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), 
+        crs=gdf.crs
+    )
+
+    # turn doy (day of year) column back into datetime column
+    return_gdf[datetime_col] = pd.to_datetime(f'{event_date.year}', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
+    #return_gdf["valid_time"] = pd.to_datetime(return_gdf["doy"], format="%j").dt.strftime("%m-%d")
+
+    return return_gdf
 
 def deprecated_calculate_mean_gdf(
     gdf:gpd.GeoDataFrame, 
