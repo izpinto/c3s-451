@@ -128,7 +128,7 @@ class BeaconClient():
         if df.empty:
             return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time', variable], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
         # Wrap longitude to -180 to 180
-        df['longitude'] = ((df['longitude'] + 180) % 360)
+        df['longitude'] = ((df['longitude'] + 180) % 360) - 180
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
 
     def fetch_from_era5_daily_pressure_levels_gpd(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, levels: list[int]) -> gpd.GeoDataFrame:
@@ -147,7 +147,7 @@ class BeaconClient():
         if df.empty:
             return gpd.GeoDataFrame(columns=['longitude', 'latitude', 'valid_time', variable, 'pressure_level'], geometry=gpd.points_from_xy([], []), crs='EPSG:4326')
         # Wrap longitude to -180 to 180
-        df['longitude'] = ((df['longitude'] + 180) % 360)
+        df['longitude'] = ((df['longitude'] + 180) % 360) - 180
         return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs='EPSG:4326')
     
     def fetch_from_era5_daily_pressure_levels_xr(self, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], variable: str, levels: list[int]) -> xr.Dataset:
