@@ -1115,7 +1115,7 @@ class DataClient():
         gcm_map = Utils.get_gcm_cordex_to_cmip5()
         # 2. Main Loop
         for entry in models:
-            if max_models and processed_count >= max_models:
+            if max_models is not None and processed_count >= max_models:
                 break
 
             model_id = None

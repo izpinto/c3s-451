@@ -557,11 +557,10 @@ class Plot:
                 family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=0)
             return fig, ax, img_ax
         else:
-            return fig, ax
+            return fig, ax, None
 
 
     # adjust this so:
@@ -783,17 +782,15 @@ class Plot:
             cbar.set_ticklabels(tick_labels)
             # Font settings
             plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
-            plt.show()
-        
+
         if subtitle:
             fig.suptitle(subtitle)
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.1)
             return fig, axes, img_ax
         else:
-            return fig, axes
+            return fig, axes, None
 
 
 
@@ -1220,7 +1217,6 @@ class Plot:
         # plt.tight_layout()
         # plt.show()
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.1)
             return fig, ax, img_ax
         else:
@@ -1357,11 +1353,10 @@ class Plot:
         axs = axs[:nplots]
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=0)
             return fig, ax, img_ax
         else:
-            return fig, ax
+            return fig, ax, None
 
 
 
@@ -1585,7 +1580,6 @@ class Plot:
             cbar.set_label(legend_title if legend_title else value_col,
                         labelpad=10, fontsize=27, weight='bold', color='#364563')
             plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
-            plt.show()
 
         if subtitle:
             fig.suptitle(subtitle, y=1.15)
@@ -1601,11 +1595,10 @@ class Plot:
             )
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.090)
             return fig, axes, img_ax
         else:
-            return fig, axes
+            return fig, axes, None
     
     @staticmethod
     def plot_cordex_map(gdf, domains_dict, bbox, study_region, mapproj, selected_domain=None, add_logos=True):
@@ -1693,11 +1686,10 @@ class Plot:
 
         # Logos and Return
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
             return fig, ax, img_ax
         else:
-            return fig, ax
+            return fig, ax, None
 
     @staticmethod
     def plot_koppen_geiger(
@@ -1865,7 +1857,6 @@ class Plot:
             fig.tight_layout(rect=[0, 0, 1, 0.95])
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.01)
             return fig, ax, img_ax
         else:
@@ -2009,10 +2000,9 @@ class Plot:
             axs_flat[i].axis('off')
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.1)
             return fig, axs_flat, img_ax
-        
+
         return fig, axs_flat, None
 
     @staticmethod
@@ -2167,7 +2157,6 @@ class Plot:
 
         # Logos and Return
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
             return fig, axs_flat, img_ax
         else:
@@ -2205,9 +2194,10 @@ class Plot:
         img_ax = None
         if add_logos:
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
-
-        plt.close(fig)
-        return fig, axs_flat, img_ax
+            return fig, axs_flat, img_ax
+        else:
+            return fig, axs_flat, None
+    
     
 class KoppenGeiger:
 
