@@ -1830,6 +1830,8 @@ class Plot:
     def plot_spatial_maps(obs: xr.Dataset,
                       spatial_maps: dict,
                       value_col: str,
+                      study_region: gpd.GeoDataFrame,
+                      show_study: bool = True,
                       legend_title: str | None = None,
                       ncols: int = 4,
                       cmap: str | None = None,
@@ -1870,8 +1872,8 @@ class Plot:
         n_models = len(spatial_maps)
         nrows = int(np.ceil((ncols + n_models) / ncols))
         
-        fig = plt.figure(figsize=(ncols * 5, nrows * 2.5))
-        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.4, wspace=0.1)
+        fig = plt.figure(figsize=(ncols * 5, nrows * 3.5))
+        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.3, wspace=0.1)
         
         axs_flat = []
         for r in range(nrows):
@@ -1886,12 +1888,20 @@ class Plot:
         # Get colormap 
         cmap_obj, norm = Plot.get_colormap(cmap_name, vmin, vmax, value_col=value_col)
 
+        lon_min, lon_max = float(data_obs.longitude.min()), float(data_obs.longitude.max())
+        lat_min, lat_max = float(data_obs.latitude.min()), float(data_obs.latitude.max())
+        extent = [lon_min, lon_max, lat_min, lat_max]
+
         # Plot ERA5 (Top Left)
         ax_obs = axs_flat[0]
         ax_obs.pcolormesh(
             data_obs.longitude, data_obs.latitude, data_obs,
             cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
         )
+        ax_obs.set_extent(extent, crs=ccrs.PlateCarree())
+        if show_study:
+            ax_obs.add_geometries(study_region.geometry, crs=ccrs.PlateCarree(), 
+                                facecolor='none', edgecolor='green', linewidth=1.5, zorder=5)
         ax_obs.set_title("ERA5", fontsize=18, weight='medium', pad=12)
 
         # Turn off the rest of the first row (empty space)
@@ -1909,6 +1919,10 @@ class Plot:
                 da_clim.longitude, da_clim.latitude, da_clim,
                 cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
             )
+            ax.set_extent(extent, crs=ccrs.PlateCarree())        
+            if show_study:
+                ax.add_geometries(study_region.geometry, crs=ccrs.PlateCarree(), 
+                                  facecolor='none', edgecolor='green', linewidth=1.5, zorder=5)
             ax.set_title(name, fontsize=16, weight='medium', pad=10)
 
         # Apply Standard Features to active plots
@@ -2094,9 +2108,8 @@ class Plot:
             if i % ncols == 0 and yaxis_label:
                 ax.set_ylabel(yaxis_label)
 
-            # Only set xlabel on bottom row
-            if i >= (nrows - 1) * ncols:
-                ax.set_xlabel(time_col.capitalize())
+            
+            ax.set_xlabel(time_col.capitalize())
 
             ax.grid(True, alpha=0.3)
             ax.legend(loc='best', fontsize='small')
