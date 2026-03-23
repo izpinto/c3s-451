@@ -9,7 +9,7 @@ from .variable import MarsVariable
 from ..utils import Utils
 
 class MarsClient:
-    def __init__(self, key: str):
+    def __init__(self, key: str, email: str):
         """
         Initialize the MarsClient with credentials for the ECMWF MARS archive.
 
@@ -22,7 +22,8 @@ class MarsClient:
                 The API key required to authenticate with the ECMWF API.
         """
         self.key = key
-        self.server = ECMWFService("mars", key=key, url="https://api.ecmwf.int/v1")
+        self.email = email
+        self.server = ECMWFService("mars", key=key, url="https://api.ecmwf.int/v1", email=email)
         self.check_cdo()
 
     def check_cdo(self):
