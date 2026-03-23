@@ -1,5 +1,13 @@
 from enum import Enum
 
+class MarsVariable(Enum):
+    t2m = 1 # 2 meter temperature
+    t2m_min = 2 # 2 meter temperature min
+    t2m_max = 3 # 2 meter temperature max
+    tp = 4 # total precipitation
+    z500 = 5 # geopotential at 500 hPa
+    mslp = 6 # mean sea level pressure
+
 class Variable:
     class CMIP5Monthly(Enum):
         temperature_2m = 1 # 2 meter temperature
@@ -181,6 +189,22 @@ class Variable:
             }
             return translation_dict[self]
         
+        def mars_variable(self) -> MarsVariable:
+            """
+            Get the corresponding Mars variable.
+
+            Returns:
+                MarsVariable: The corresponding Mars variable.
+            """
+            translation_dict = {
+                Variable.ERA5DailySingleLevel.temperature_2m_mean: MarsVariable.t2m,
+                Variable.ERA5DailySingleLevel.temperature_2m_max: MarsVariable.t2m_max,
+                Variable.ERA5DailySingleLevel.temperature_2m_min: MarsVariable.t2m_min,
+                Variable.ERA5DailySingleLevel.total_precipitation: MarsVariable.tp,
+                Variable.ERA5DailySingleLevel.mean_sea_level_pressure: MarsVariable.mslp,
+            }
+            return translation_dict[self]
+        
     class ERA5DailyPressureLevels(Enum):
         geopotential = 1 # geopotential
         
@@ -231,3 +255,16 @@ class Variable:
                 Variable.ERA5DailyPressureLevels.geopotential: 'z',
             }
             return translation_dict[self]
+        
+        def mars_variable(self) -> MarsVariable:
+            """
+            Get the corresponding Mars variable.
+            Returns:
+                MarsVariable: The corresponding Mars variable.
+            """
+            translation_dict = {
+                Variable.ERA5DailyPressureLevels.geopotential: MarsVariable.z500,
+            }
+            return translation_dict[self]
+        
+    
