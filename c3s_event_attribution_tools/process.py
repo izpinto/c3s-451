@@ -1028,6 +1028,11 @@ class Process:
 
                 # Spatial Masking
                 mask = regionmask.mask_geopandas(study_region, da.longitude, da.latitude)
+                if np.isnan(mask).all():
+                    Utils.print(f"Skipping {label}: Coarse grid detected. Polygon missed all center points.")
+                    results["dropped"].append(original_entry) 
+                    continue
+                
                 ts_regional = da.where(mask == 0, drop=True)
 
                 # Product B: Regional Time Series (Latitude Weighted)
@@ -1062,7 +1067,7 @@ class Process:
                 else:
                     start_month, end_month = sc_month_range
                 # Create a dummy non-leap year to map month → doy
-                dummy_time = xr.cftime_range(start="2025-01-01", periods=365, freq="D")
+                dummy_time = xr.date_range(start="2025-01-01", periods=365, freq="D", use_cftime=True)
                 sc = sc.assign_coords(dayofyear_time=("dayofyear", dummy_time))
 
                 if end_month >= start_month:
@@ -1323,7 +1328,14 @@ class Process:
                 
                 # 5. Plotting
                 tryCatch({
-                    fname <- file.path(save_dir, paste0(model_name, "_", scenario_label, ".png"))
+                    # Define a subfolder specifically for plots
+                    plot_subdir <- file.path(save_dir, "modelfits")
+                    
+                    # Create the directory if it doesn't exist 
+                    if (!dir.exists(plot_subdir)) {
+                        dir.create(plot_subdir, recursive = TRUE, showWarnings = FALSE)
+                    }
+                    fname <- file.path(plot_subdir, paste0(model_name, "_", scenario_label, ".png"))
                     val_to_plot <- unlist(res)[,"rp_value"]
                     
                     # Use 'cov_hist' (cov_cf) exactly like your original loop
