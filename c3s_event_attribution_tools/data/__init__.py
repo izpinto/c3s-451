@@ -11,7 +11,7 @@ from ..constants import XR_CONCAT_DATA_VARS
 import tempfile
 import regionmask
 import os
-
+import sys
 
 try:
     # Available in Python 3.12+ as per PEP 702
@@ -20,8 +20,10 @@ except ImportError:
     # Backport available in typing_extensions for older versions
     from typing_extensions import deprecated
 
-if __import__('sys').platform in ['linux']:
+if sys.platform in ['linux', 'darwin']:
     from .mars_client import *
+
+if sys.platform in ['linux']:
     import iris # type: ignore
 
 class DataClient():
@@ -183,8 +185,6 @@ class DataClient():
         
             all_gdfs.append(gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True)))
             
-        # ToDo re-implement MARS data fetching if needed
-            
         return gpd.GeoDataFrame(pd.concat(all_gdfs, ignore_index=True))
         
     def _get_daily_data_single_levels_xr(
@@ -235,9 +235,35 @@ class DataClient():
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     dss.append(ds_cds)
         
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) 
+            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS))
         
-        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+        ds_merged = xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+        if self.mars_client is not None and 'valid_time' in ds_merged and ds_merged['valid_time'].size > 0:
+            try:
+                max_existing_day = ds_merged['valid_time'].values.max().astype('datetime64[D]')
+                fetch_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
+                fetch_end = datetime.utcnow()
+
+                if fetch_start <= fetch_end:
+                    min_lon, min_lat, max_lon, max_lat = bbox
+                    mars_ds = self.mars_client.fetch_operational_data(
+                        variable=variable.mars_variable(),
+                        min_date=fetch_start,
+                        max_date=fetch_end,
+                        min_lon=min_lon,
+                        max_lon=max_lon,
+                        min_lat=min_lat,
+                        max_lat=max_lat,
+                    )
+
+                    ds_merged = xr.concat([ds_merged, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+                    ds_merged = ds_merged.sortby('valid_time')
+
+            except Exception as e:
+                Utils.print(f"Error while backfilling missing data from MARS: {e}")
+        
+        return ds_merged
     
     def _get_beacon_cache_daily_pressure_levels_gpd(
         self,
@@ -408,7 +434,33 @@ class DataClient():
         
             all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS))
         
-        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+        ds_merged = xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+        if self.mars_client is not None and 'valid_time' in ds_merged and ds_merged['valid_time'].size > 0:
+            try:
+                max_existing_day = ds_merged['valid_time'].values.max().astype('datetime64[D]')
+                fetch_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
+                fetch_end = datetime.utcnow()
+
+                if fetch_start <= fetch_end:
+                    min_lon, min_lat, max_lon, max_lat = bbox
+                    mars_ds = self.mars_client.fetch_operational_data(
+                        variable=variable.mars_variable(),
+                        min_date=fetch_start,
+                        max_date=fetch_end,
+                        min_lon=min_lon,
+                        max_lon=max_lon,
+                        min_lat=min_lat,
+                        max_lat=max_lat,
+                    )
+
+                    ds_merged = xr.concat([ds_merged, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+                    ds_merged = ds_merged.sortby('valid_time')
+
+            except Exception as e:
+                Utils.print(f"Error while backfilling missing data from MARS: {e}")
+        
+        return ds_merged
     
     @deprecated("Use fetch_data_daily_single_levels instead")
     def temperature_2m_mean_gpd(self, bbox: tuple[float,float,float,float], time_ranges: list[tuple[datetime, datetime]], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame | None:
