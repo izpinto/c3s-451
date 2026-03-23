@@ -69,6 +69,9 @@ pylint-output.txt
 # Local development
 *.local
 
+# Json files
+*.json
+
 
 # any saves of date/imgs we make
 *.gpkg

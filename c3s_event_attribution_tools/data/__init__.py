@@ -9,6 +9,7 @@ from .variable import *
 from ..constants import XR_CONCAT_DATA_VARS
 
 import tempfile
+import regionmask
 import os
 
 
@@ -1110,7 +1111,8 @@ class DataClient():
         hist_range=(datetime(1950, 1, 1), datetime(2005, 12, 31)),
         fut_range=(datetime(2006, 1, 1), datetime(2100, 12, 31)),
         temp_res="daily",
-        max_models=None
+        max_models=None,
+        study_region=None,
     ) -> tuple[dict[str, xr.Dataset|xr.DataTree], dict[str, xr.Dataset|xr.DataTree]]:
         """
         Unified fetcher for CMIP6 and CORDEX data.
@@ -1193,6 +1195,16 @@ class DataClient():
                         variable=variable_name_, model=model_id, bbox=bbox,
                         time_range=hist_range, experiment=exp_hist, temporal_resolution=temp_res
                     )
+
+                    if study_region is not None:
+                    # Resolution validation
+                        test_lon = ds_hist.get('longitude', ds_hist.get('lon'))
+                        test_lat = ds_hist.get('latitude', ds_hist.get('lat'))
+                        mask = regionmask.mask_geopandas(study_region, test_lon, test_lat)
+                        if np.isnan(mask).all():
+                            Utils.print(f"   ⚠️ Skipping {model_id}: Grid is too coarse for the study region.")
+                            continue
+                    
                     ds_fut = self.fetch_cmip6_xr(
                         variable=variable_name_, model=model_id, bbox=bbox,
                         time_range=fut_range, experiment=exp_fut, temporal_resolution=temp_res

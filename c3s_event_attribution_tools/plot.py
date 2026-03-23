@@ -1067,9 +1067,6 @@ class Plot:
 
         return fig, ax, adjusted_polygons
 
-
-
-
     @staticmethod
     def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
                     fig_size:tuple=(12,6), dpi:int=100, show_grid:bool=True, line_style:str=':', marker_style:str=None, 
@@ -1136,38 +1133,6 @@ class Plot:
                 - img_ax: The Axes object containing the added logo, or None if `add_logos` is False.
         '''
 
-        # plot_df = data.copy()
-        # plot_df[datetime_col] = pd.to_datetime(plot_df[datetime_col])
-        # plot_df["plot_time"] = plot_df[datetime_col]
-
-        # start_month, end_month = month_range
-
-        # # Determine if the period crosses the year boundary
-        # crosses_year = (end_month < start_month)
-
-        # # Adjust months so they plot in correct chronological order
-        # if crosses_year:
-        #     # For ranges like (7,6) or (9,3): shift early months (those before start_month) forward by one year
-        #     early_mask = plot_df["plot_time"].dt.month < start_month
-        #     plot_df.loc[early_mask, "plot_time"] += pd.DateOffset(years=1)
-
-        # # Sort chronologically after shifting
-        # plot_df = plot_df.sort_values("plot_time").reset_index(drop=True)
-
-        # # ----- Create label ticks -----
-        # # Define the logical start month (the first month of the period)
-        # if crosses_year:
-        #     # e.g. (7,6) → start in July 2024 and wrap to June 2025
-        #     label_start = pd.Timestamp(f"2024-{start_month:02d}-01")
-        # else:
-        #     # e.g. (1,6) or (3,9): simple one-year span
-        #     label_start = pd.Timestamp(f"2024-{start_month:02d}-01")
-
-        # # Always 12 months long
-        # labelticks = pd.date_range(label_start, periods=12, freq="MS")
-        # labels = labelticks.strftime("%b")
-
-
         #set font family globally
         if ax is None:
             fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
@@ -1211,21 +1176,18 @@ class Plot:
             ax.grid(True)
 
         # Format x-axis with date labels
-        #ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-        fig.autofmt_xdate(rotation=label_rotation)
+        plt.setp(ax.get_xticklabels(), rotation=label_rotation, ha='center')
 
-        # plt.tight_layout()
-        # plt.show()
+        fig.tight_layout()
+        
+        fig.subplots_adjust(bottom=0.15)
+
         if add_logos:
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.1)
             return fig, ax, img_ax
         else:
             img_ax = None
             return fig, ax, img_ax
-
-
-
-
 
     @staticmethod
     def plot_n_days(
@@ -1868,6 +1830,8 @@ class Plot:
     def plot_spatial_maps(obs: xr.Dataset,
                       spatial_maps: dict,
                       value_col: str,
+                      study_region: gpd.GeoDataFrame,
+                      show_study: bool = True,
                       legend_title: str | None = None,
                       ncols: int = 4,
                       cmap: str | None = None,
@@ -1908,8 +1872,8 @@ class Plot:
         n_models = len(spatial_maps)
         nrows = int(np.ceil((ncols + n_models) / ncols))
         
-        fig = plt.figure(figsize=(ncols * 5, nrows * 2.5))
-        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.4, wspace=0.1)
+        fig = plt.figure(figsize=(ncols * 5, nrows * 3.5))
+        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.3, wspace=0.1)
         
         axs_flat = []
         for r in range(nrows):
@@ -1924,12 +1888,20 @@ class Plot:
         # Get colormap 
         cmap_obj, norm = Plot.get_colormap(cmap_name, vmin, vmax, value_col=value_col)
 
+        lon_min, lon_max = float(data_obs.longitude.min()), float(data_obs.longitude.max())
+        lat_min, lat_max = float(data_obs.latitude.min()), float(data_obs.latitude.max())
+        extent = [lon_min, lon_max, lat_min, lat_max]
+
         # Plot ERA5 (Top Left)
         ax_obs = axs_flat[0]
         ax_obs.pcolormesh(
             data_obs.longitude, data_obs.latitude, data_obs,
             cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
         )
+        ax_obs.set_extent(extent, crs=ccrs.PlateCarree())
+        if show_study:
+            ax_obs.add_geometries(study_region.geometry, crs=ccrs.PlateCarree(), 
+                                facecolor='none', edgecolor='green', linewidth=1.5, zorder=5)
         ax_obs.set_title("ERA5", fontsize=18, weight='medium', pad=12)
 
         # Turn off the rest of the first row (empty space)
@@ -1947,6 +1919,10 @@ class Plot:
                 da_clim.longitude, da_clim.latitude, da_clim,
                 cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
             )
+            ax.set_extent(extent, crs=ccrs.PlateCarree())        
+            if show_study:
+                ax.add_geometries(study_region.geometry, crs=ccrs.PlateCarree(), 
+                                  facecolor='none', edgecolor='green', linewidth=1.5, zorder=5)
             ax.set_title(name, fontsize=16, weight='medium', pad=10)
 
         # Apply Standard Features to active plots
@@ -2132,9 +2108,8 @@ class Plot:
             if i % ncols == 0 and yaxis_label:
                 ax.set_ylabel(yaxis_label)
 
-            # Only set xlabel on bottom row
-            if i >= (nrows - 1) * ncols:
-                ax.set_xlabel(time_col.capitalize())
+            
+            ax.set_xlabel(time_col.capitalize())
 
             ax.grid(True, alpha=0.3)
             ax.legend(loc='best', fontsize='small')
