@@ -244,14 +244,16 @@ class DataClient():
                     now_utc = datetime.utcnow()
                     missing_end = min(time_range[1], now_utc)
                     seven_days_ago = (pd.Timestamp(now_utc) - pd.Timedelta(days=7)).to_pydatetime()
+                    mars_fetch_start = max(missing_start, seven_days_ago)
+                    mars_fetch_end = min(missing_end, now_utc)
 
-                    # Only backfill missing tail when the missing range is in the last 7 days.
-                    if missing_start <= missing_end and missing_start >= seven_days_ago:
+                    # Strictly limit MARS retrieval to the rolling last 7 days.
+                    if mars_fetch_start <= mars_fetch_end:
                         min_lon, min_lat, max_lon, max_lat = bbox
                         mars_ds = self.mars_client.fetch_operational_data(
                             variable=variable.mars_variable(),
-                            min_date=missing_start,
-                            max_date=missing_end,
+                            min_date=mars_fetch_start,
+                            max_date=mars_fetch_end,
                             min_lon=min_lon,
                             max_lon=max_lon,
                             min_lat=min_lat,
@@ -445,14 +447,16 @@ class DataClient():
                     now_utc = datetime.utcnow()
                     missing_end = min(time_range[1], now_utc)
                     seven_days_ago = (pd.Timestamp(now_utc) - pd.Timedelta(days=7)).to_pydatetime()
+                    mars_fetch_start = max(missing_start, seven_days_ago)
+                    mars_fetch_end = min(missing_end, now_utc)
 
-                    # Only backfill missing tail when the missing range is in the last 7 days.
-                    if missing_start <= missing_end and missing_start >= seven_days_ago:
+                    # Strictly limit MARS retrieval to the rolling last 7 days.
+                    if mars_fetch_start <= mars_fetch_end:
                         min_lon, min_lat, max_lon, max_lat = bbox
                         mars_ds = self.mars_client.fetch_operational_data(
                             variable=variable.mars_variable(),
-                            min_date=missing_start,
-                            max_date=missing_end,
+                            min_date=mars_fetch_start,
+                            max_date=mars_fetch_end,
                             min_lon=min_lon,
                             max_lon=max_lon,
                             min_lat=min_lat,
