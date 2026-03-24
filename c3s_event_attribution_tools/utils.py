@@ -469,11 +469,11 @@ class Utils:
     def select_month_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, month_range:tuple[int, int]) -> gpd.GeoDataFrame:
         '''
         Filters a GeoDataFrame to retain only the rows whose datetime column falls within a specified range of months.
-
+ 
         This function correctly handles ranges that cross the year boundary (e.g., December to February). For cross-year
         ranges, months in the second part of the range are temporarily shifted back one year to enable
         correct chronological filtering, though the original date values remain chronologically correct.
-
+ 
         Parameters:
             gdf (gpd.GeoDataFrame):
                 The input GeoDataFrame containing time-series data.
@@ -481,25 +481,22 @@ class Utils:
                 The column name in `gdf` containing datetime objects used for filtering.
             month_range (tuple[int, int]):
                 A tuple specifying the start month and end month as integers (1-12), i.e., (start_month, end_month).
-
+ 
         Returns:
             gpd.GeoDataFrame:
                 A new GeoDataFrame containing only the data within the specified month range.
         '''
         gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-
+ 
         months = gdf[datetime_col].dt.month
         start_month, end_month = month_range
-
+ 
         # if month range does not cross year boundary
         if end_month >= start_month:
             return gdf[(months >= start_month) & (months <= end_month)]
         else:
             # Cross-year range: select months across year boundary
             gdf = gdf[(months >= start_month) | (months <= end_month)]
-            # Shift early months (before start_month) back one year
-            shift_mask = gdf[datetime_col].dt.month < start_month
-            gdf.loc[shift_mask, datetime_col] = gdf.loc[shift_mask, datetime_col] - pd.DateOffset(years=1)
             return gdf
 
     @staticmethod

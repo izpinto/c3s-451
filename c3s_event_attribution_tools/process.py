@@ -466,7 +466,7 @@ class Process:
                                padding:int=0, method:Literal["sum", "mean", "std", "quantile"]='mean') -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
         '''
         Calculate yearly values (mean, max, min) from daily data with optional rolling window and month subsetting.
-
+ 
         Parameters:
             gdf (gpd.GeoDataFrame, required):
                 Input data with daily values.
@@ -483,16 +483,15 @@ class Process:
                 Days for rolling window (default: 0, no rolling).
             method (str, optional):
                 Rolling method: 'mean', 'sum', 'std', or 'quantile' (default: 'mean').
-            
         Returns:
             data (gpd.GeoDataFrame):
                 Yearly values as specified by `yearly_value`.
-
+ 
         Raises:
             ValueError:
                 If `yearly_value` is not 'mean', 'max', or 'min'.
         '''
-
+ 
         # calculate running mean. if padding == 1 gdf gets automatically returned
         rolled_gdf = Process.calculate_rolling_n_days(
             gdf=gdf, 
@@ -502,30 +501,47 @@ class Process:
             centering=True, 
             method=method
         )
-
+ 
         rolled_gdf = cast(gpd.GeoDataFrame, rolled_gdf)
-
+ 
         # subset the gdf to remove potential padding
         if month_range is not None:
             rolled_gdf = Utils.subset_gdf(gdf=rolled_gdf, datetime_col=datetime_col, month_range=month_range)
-
+ 
         # add years to the gdf to calculate yearly values
         rolled_gdf = Utils.add_year_column(gdf=rolled_gdf, datetime_col=datetime_col)
-
+ 
         #change name to valid_time colum to f{padding}_day rolling date
         new_datetime_col = f"{padding}_day_rolling_date"
         rolled_gdf = rolled_gdf.rename(columns={datetime_col: new_datetime_col})
-
-
-        match yearly_value:
-            case 'mean':
-                return cast(gpd.GeoDataFrame, Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')), rolled_gdf
-            case 'max':
-                return cast(gpd.GeoDataFrame, Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
-            case 'min':
-                return cast(gpd.GeoDataFrame, Process.calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
-            case _:
-                raise ValueError("calculation must be 'mean', 'max', or 'min'")
+ 
+        if month_range[1] >= month_range[0]:
+            match yearly_value:
+                case 'mean':
+                    return cast(gpd.GeoDataFrame, Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')), rolled_gdf
+                case 'max':
+                    return cast(gpd.GeoDataFrame, Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
+                case 'min':
+                    return cast(gpd.GeoDataFrame, Process.calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
+                case _:
+                    raise ValueError("calculation must be 'mean', 'max', or 'min'")
+        else:
+            shift_mask = rolled_gdf[new_datetime_col].dt.month < month_range[0]
+            rolled_gdf["year"] = rolled_gdf[new_datetime_col].dt.year
+            rolled_gdf.loc[shift_mask, "year"] -= 1
+            # Cross-year range
+            match yearly_value:
+                case 'min':
+                    result = rolled_gdf.loc[rolled_gdf.groupby(["year"])[value_col].idxmin(), ["year", new_datetime_col, value_col]].reset_index(drop=True)
+                    return cast(gpd.GeoDataFrame, result), rolled_gdf
+                case 'max':
+                    result = rolled_gdf.loc[rolled_gdf.groupby(["year"])[value_col].idxmax(), ["year", new_datetime_col, value_col]].reset_index(drop=True)
+                    return cast(gpd.GeoDataFrame, result), rolled_gdf
+                case 'mean':
+                    result = (rolled_gdf.groupby(["year"])[value_col].mean().reset_index())
+                    return cast(gpd.GeoDataFrame, result), rolled_gdf      
+                case _:
+                    raise ValueError("calculation must be 'mean', 'max', or 'min'")
 
     @staticmethod
     def calculate_seasonal_cycle(
@@ -749,8 +765,8 @@ class Process:
                     group_key = 'time.year'
                 else:
                     seasonal_year = xr.where(
-                        filtered_months >= start_m, 
-                        filtered_years + 1, 
+                        filtered_months < start_m, 
+                        filtered_years - 1, 
                         filtered_years
                     )
                     da_filtered.coords["season_year"] = seasonal_year
