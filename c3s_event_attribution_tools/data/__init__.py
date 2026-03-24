@@ -34,7 +34,7 @@ class DataClient():
         The other classes e.g. CDSClient, MarsClient etc. are used in this client class.
         
     """
-    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, cordex_arco_token : str | None = None, cache_directory: str | None = None) -> None:
+    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, mars_email: str | None = None, cordex_arco_token : str | None = None, cache_directory: str | None = None) -> None:
         """
         Instantiate the DataClient by calling the constructor.
         
@@ -42,7 +42,8 @@ class DataClient():
             cds_key (str): The API key for the Climate Data Store (CDS).
             beacon_cache_url (str | None): Optional URL for the Beacon Cache service.
             beacon_token (str | None): Optional token for accessing the Beacon Cache.
-            mars_key (str | None): Optional API key for accessing MARS data.
+            mars_key (str | None): Optional API key for accessing MARS data. (Required if mars_email is provided)
+            mars_email (str | None): Optional email for accessing MARS data. (Required if mars_key is provided)
             cache_directory (str | None): Optional directory path for caching data locally. If not provided, a default cache directory will be used.
         """
         self.cds_client = CDSClient(cds_key, cache_directory)
@@ -65,8 +66,8 @@ class DataClient():
             except Exception as e:
                 Utils.print(f"Failed to initialize Beacon Cache client: {e}. No data will be fetched from Beacon Cache for the current session.")
                 self.beacon_cache = None
-        if mars_key:
-            self.mars_client = MarsClient(key=mars_key)  # type: ignore for mars on non-linux platforms
+        if mars_key and mars_email:
+            self.mars_client = MarsClient(key=mars_key, email=mars_email)  # type: ignore for mars on non-linux platforms
         if cordex_arco_token:
             self.cordex_client = CordexClient(cordex_token=cordex_arco_token)
             

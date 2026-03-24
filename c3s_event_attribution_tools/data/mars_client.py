@@ -9,7 +9,7 @@ from .variable import MarsVariable
 from ..utils import Utils
 
 class MarsClient:
-    def __init__(self, key: str):
+    def __init__(self, key: str, email: str):
         """
         Initialize the MarsClient with credentials for the ECMWF MARS archive.
 
@@ -22,7 +22,8 @@ class MarsClient:
                 The API key required to authenticate with the ECMWF API.
         """
         self.key = key
-        self.server = ECMWFService("mars", key=key, url="https://api.ecmwf.int/v1")
+        self.email = email
+        self.server = ECMWFService("mars", key=key, url="https://api.ecmwf.int/v1", email=email)
         self.check_cdo()
 
     def check_cdo(self):
@@ -98,7 +99,7 @@ class MarsClient:
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".nc")
         return temp_file.name
 
-    def _normalize_longitude_and_filter_bbox(
+    def _normalize_dataset_and_filter_bbox(
         self,
         ds: xr.Dataset,
         min_lon: float,
@@ -107,7 +108,7 @@ class MarsClient:
         max_lat: float,
     ) -> xr.Dataset:
         """
-        Normalize longitudes to [-180, 180) and filter by bounding box.
+        Normalize time and longitudes, then filter by bounding box.
 
         Parameters:
             ds (xr.Dataset): Dataset containing longitude and latitude coordinates.
@@ -117,8 +118,10 @@ class MarsClient:
             max_lat (float): Maximum latitude of the bounding box.
 
         Returns:
-            xr.Dataset: Longitude-normalized and spatially filtered dataset.
+            xr.Dataset: Time/longitude-normalized and spatially filtered dataset.
         """
+        ds = self._normalize_time(ds)
+
         if "longitude" in ds.coords:
             ds = ds.assign_coords(longitude=((ds.longitude + 180) % 360) - 180)
             ds = ds.sortby("longitude")
@@ -130,6 +133,25 @@ class MarsClient:
             & (ds["latitude"] <= max_lat),
             drop=True,
         )
+
+    def _normalize_time(self, ds: xr.Dataset) -> xr.Dataset:
+        """
+        Normalize datetime coordinates to midnight (00:00:00).
+
+        This ensures daily data always uses day-boundary timestamps rather
+        than midday timestamps (e.g. 12:00:00).
+
+        Parameters:
+            ds (xr.Dataset): Dataset potentially containing time coordinates.
+
+        Returns:
+            xr.Dataset: Dataset with normalized `valid_time`/`time` coordinates.
+        """
+        for coord_name in ("valid_time", "time"):
+            if coord_name in ds.coords:
+                ds = ds.assign_coords({coord_name: ds[coord_name].dt.floor("D")})
+
+        return ds
         
     def fetch_operational_data(
         self,
@@ -269,7 +291,7 @@ class MarsClient:
 
         ds = xr.open_dataset(out_daily)
         ds = ds.rename({"time": "valid_time"})
-        return self._normalize_longitude_and_filter_bbox(
+        return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
         )
 
@@ -334,7 +356,7 @@ class MarsClient:
         if rename_map:
             ds = ds.rename(rename_map)
 
-        return self._normalize_longitude_and_filter_bbox(
+        return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
         )
 
@@ -400,7 +422,7 @@ class MarsClient:
         if rename_map:
             ds = ds.rename(rename_map)
 
-        return self._normalize_longitude_and_filter_bbox(
+        return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
         )
 
@@ -482,7 +504,7 @@ class MarsClient:
         ds = xr.open_dataset(out_daily)
         Utils.print(ds)
         ds = ds.rename({"mn2t6": "t2m", "time": "valid_time"})
-        return self._normalize_longitude_and_filter_bbox(
+        return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
         )
 
@@ -564,7 +586,7 @@ class MarsClient:
 
         ds = xr.open_dataset(out_daily)
         ds = ds.rename({"mx2t6": "t2m", "time": "valid_time"})
-        return self._normalize_longitude_and_filter_bbox(
+        return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
         )
 
@@ -634,7 +656,7 @@ class MarsClient:
 
         ds = xr.open_dataset(out_daily)
         ds = ds.rename({"time": "valid_time"})
-        return self._normalize_longitude_and_filter_bbox(
+        return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
         )
 
