@@ -177,7 +177,7 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                     # Request missing data from CDS
-                    fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_single_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
@@ -230,11 +230,12 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < np.datetime64(time_range[1]):
                     # Request missing data from CDS
-                    fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     dss.append(ds_cds)
+            
             ds_for_range = xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
 
             if self.mars_client is not None and 'valid_time' in ds_for_range and ds_for_range['valid_time'].size > 0:
@@ -377,7 +378,7 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                     # Request missing data from CDS
-                    fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_pressure_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
@@ -433,7 +434,7 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < np.datetime64(time_range[1]):
                     # Request missing data from CDS
-                    fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
