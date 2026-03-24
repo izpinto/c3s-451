@@ -235,34 +235,38 @@ class DataClient():
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
                     dss.append(ds_cds)
-        
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS))
-        
+            ds_for_range = xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+            if self.mars_client is not None and 'valid_time' in ds_for_range and ds_for_range['valid_time'].size > 0:
+                try:
+                    max_existing_day = ds_for_range['valid_time'].values.max().astype('datetime64[D]')
+                    missing_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
+                    now_utc = datetime.utcnow()
+                    missing_end = min(time_range[1], now_utc)
+                    seven_days_ago = (pd.Timestamp(now_utc) - pd.Timedelta(days=7)).to_pydatetime()
+
+                    # Only backfill missing tail when the missing range is in the last 7 days.
+                    if missing_start <= missing_end and missing_start >= seven_days_ago:
+                        min_lon, min_lat, max_lon, max_lat = bbox
+                        mars_ds = self.mars_client.fetch_operational_data(
+                            variable=variable.mars_variable(),
+                            min_date=missing_start,
+                            max_date=missing_end,
+                            min_lon=min_lon,
+                            max_lon=max_lon,
+                            min_lat=min_lat,
+                            max_lat=max_lat,
+                        )
+
+                        ds_for_range = xr.concat([ds_for_range, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+                        ds_for_range = ds_for_range.sortby('valid_time')
+
+                except Exception as e:
+                    Utils.print(f"Error while backfilling missing data from MARS: {e}")
+
+            all_dss.append(ds_for_range)
+
         ds_merged = xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
-
-        if self.mars_client is not None and 'valid_time' in ds_merged and ds_merged['valid_time'].size > 0:
-            try:
-                max_existing_day = ds_merged['valid_time'].values.max().astype('datetime64[D]')
-                fetch_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
-                fetch_end = datetime.utcnow()
-
-                if fetch_start <= fetch_end:
-                    min_lon, min_lat, max_lon, max_lat = bbox
-                    mars_ds = self.mars_client.fetch_operational_data(
-                        variable=variable.mars_variable(),
-                        min_date=fetch_start,
-                        max_date=fetch_end,
-                        min_lon=min_lon,
-                        max_lon=max_lon,
-                        min_lat=min_lat,
-                        max_lat=max_lat,
-                    )
-
-                    ds_merged = xr.concat([ds_merged, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
-                    ds_merged = ds_merged.sortby('valid_time')
-
-            except Exception as e:
-                Utils.print(f"Error while backfilling missing data from MARS: {e}")
         
         return ds_merged
     
@@ -432,34 +436,38 @@ class DataClient():
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     dss.append(ds_cds)
-        
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS))
-        
+            ds_for_range = xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+            if self.mars_client is not None and 'valid_time' in ds_for_range and ds_for_range['valid_time'].size > 0:
+                try:
+                    max_existing_day = ds_for_range['valid_time'].values.max().astype('datetime64[D]')
+                    missing_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
+                    now_utc = datetime.utcnow()
+                    missing_end = min(time_range[1], now_utc)
+                    seven_days_ago = (pd.Timestamp(now_utc) - pd.Timedelta(days=7)).to_pydatetime()
+
+                    # Only backfill missing tail when the missing range is in the last 7 days.
+                    if missing_start <= missing_end and missing_start >= seven_days_ago:
+                        min_lon, min_lat, max_lon, max_lat = bbox
+                        mars_ds = self.mars_client.fetch_operational_data(
+                            variable=variable.mars_variable(),
+                            min_date=missing_start,
+                            max_date=missing_end,
+                            min_lon=min_lon,
+                            max_lon=max_lon,
+                            min_lat=min_lat,
+                            max_lat=max_lat,
+                        )
+
+                        ds_for_range = xr.concat([ds_for_range, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+                        ds_for_range = ds_for_range.sortby('valid_time')
+
+                except Exception as e:
+                    Utils.print(f"Error while backfilling missing data from MARS: {e}")
+
+            all_dss.append(ds_for_range)
+
         ds_merged = xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
-
-        if self.mars_client is not None and 'valid_time' in ds_merged and ds_merged['valid_time'].size > 0:
-            try:
-                max_existing_day = ds_merged['valid_time'].values.max().astype('datetime64[D]')
-                fetch_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
-                fetch_end = datetime.utcnow()
-
-                if fetch_start <= fetch_end:
-                    min_lon, min_lat, max_lon, max_lat = bbox
-                    mars_ds = self.mars_client.fetch_operational_data(
-                        variable=variable.mars_variable(),
-                        min_date=fetch_start,
-                        max_date=fetch_end,
-                        min_lon=min_lon,
-                        max_lon=max_lon,
-                        min_lat=min_lat,
-                        max_lat=max_lat,
-                    )
-
-                    ds_merged = xr.concat([ds_merged, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
-                    ds_merged = ds_merged.sortby('valid_time')
-
-            except Exception as e:
-                Utils.print(f"Error while backfilling missing data from MARS: {e}")
         
         return ds_merged
     
