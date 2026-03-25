@@ -124,14 +124,12 @@ class MarsClient:
 
         if "longitude" in ds.coords:
             ds = ds.assign_coords(longitude=((ds.longitude + 180) % 360) - 180)
-            ds = ds.sortby("longitude")
 
         return ds.where(
             (ds["longitude"] >= min_lon)
             & (ds["longitude"] <= max_lon)
             & (ds["latitude"] >= min_lat)
             & (ds["latitude"] <= max_lat),
-            drop=True,
         )
 
     def _normalize_time(self, ds: xr.Dataset) -> xr.Dataset:
