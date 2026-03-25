@@ -265,7 +265,6 @@ class DataClient():
                         )
 
                         ds_for_range = xr.concat([ds_for_range, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
-                        ds_for_range = ds_for_range.sortby('valid_time')
 
                 except Exception as e:
                     Utils.print(f"Error while backfilling missing data from MARS: {e}")
@@ -471,7 +470,6 @@ class DataClient():
                         )
 
                         ds_for_range = xr.concat([ds_for_range, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
-                        ds_for_range = ds_for_range.sortby('valid_time')
 
                 except Exception as e:
                     Utils.print(f"Error while backfilling missing data from MARS: {e}")
