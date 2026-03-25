@@ -74,14 +74,16 @@ nav:
         - Home: index.md
         - Data Retrieval functions: 
             - DataClient: reference/data/data_client.md
-            - CDSClient: reference/data/cds_client.md
-            - MarsClient: reference/data/mars_client.md
-            - BeaconClient: reference/data/beacon_client.md
-            - CordexClient: reference/data/cordex_client.md
+            - API Specific Clients: 
+                - CDSClient: reference/data/cds_client.md
+                - MarsClient: reference/data/mars_client.md
+                - BeaconClient: reference/data/beacon_client.md
+                - CordexClient: reference/data/cordex_client.md
             - Conversions: reference/data/conversions.md
             - Variables: reference/data/variable.md
         - Plot functions: reference/plot.md
         - Process functions: reference/process.md
+        - Analogues functions: reference/analogues.md
         - Utility functions: reference/utils.md
     #       - Client: reference/client.md
     #       - Query: reference/query.md

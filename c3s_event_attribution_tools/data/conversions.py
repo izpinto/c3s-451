@@ -185,8 +185,6 @@ class Conversions:
                 (min_lon, min_lat, max_lon, max_lat) with longitude in [-180, 180].
             eps (float):
                 Small tolerance value.
-            as_shapely (bool):
-                If True, return shapely boxes (requires shapely).
 
         Returns:
             list: List of bounding boxes in

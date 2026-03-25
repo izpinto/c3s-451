@@ -20,106 +20,14 @@ from rpy2.robjects import r
 
 class Process:
 
-    # Don't use
     @staticmethod
-    def calculate_mean_gdf(
-        gdf:gpd.GeoDataFrame, 
-        date_range: pd.core.arrays.datetimes.DatetimeArray,  # pyright: ignore[reportAttributeAccessIssue]
+    def calculate_anomaly(
+        event_gdf: gpd.GeoDataFrame, 
+        mean_climatology_gdf: gpd.GeoDataFrame,
         value_col: str, 
-        datetime_col: str="valid_time", 
-        padding: int=15,
-        year_range: None|tuple[int, int]=None, 
-        group_by: list[str]=["longitude", "latitude", "geometry"]
+        calcation: Literal["absolute", "relative"], 
+        datetime_col: str = "valid_time"
     ):
-        '''
-        Calculate mean climatology values around each date in date_range across years,
-        returning a GeoDataFrame with the same structure as the input.
-
-        Parameters:
-            gdf (GeoDataFrame, required):
-                Historical data with datetime and geometry.
-            date_range (pd.DatetimeIndex, required):
-                Dates for which to calculate climatology means.
-            value_col (str, required):
-                Column with numeric values.
-            datetime_col (str, optional):
-                Column with datetimes.
-            padding (int, optional):
-                +/- days for the averaging window.
-            year_range (tuple[int, int], optional):
-                Year range to consider (start_year, end_year).
-            group_by (list[str], optional):
-                Columns to group by when averaging. If None, averages globally.
-                Default groups by: longitude, latitude, geometry.
-
-
-        Returns:
-            GeoDataFrame:
-                Same structure as input: longitude, latitude, valid_time, value_col, geometry
-        '''
-        gdf = gdf.copy()
-        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-
-        # Filter by year range if specified
-        if year_range is not None:
-            start_year, end_year = year_range
-            gdf = gdf[(gdf[datetime_col].dt.year >= start_year) & (gdf[datetime_col].dt.year <= end_year)]
-
-        climatology = []
-
-        date_min = gdf[datetime_col].min()
-        date_max = gdf[datetime_col].max()
-
-        for target_date in date_range:
-            results = []
-            for year in gdf[datetime_col].dt.year.unique():
-                try:
-                    center_date = datetime(year, target_date.month, target_date.day)
-                except ValueError:
-                    # should we skip feb 29? use 28 instead? or use next day?
-                    continue
-
-                # skip if center_date not in gdf
-                if pd.Timestamp(center_date) not in gdf[datetime_col].values:
-                    Utils.print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
-                    continue
-
-                # range should never exceed data range
-                start = max(center_date - timedelta(days=padding), date_min)
-                end = min(center_date + timedelta(days=padding), date_max)
-
-                subset = gdf[(gdf[datetime_col] >= start) & (gdf[datetime_col] <= end)]
-                results.append(subset)
-
-            combined = pd.concat(results, ignore_index=True)
-
-            # Average per geometry
-            if group_by:
-                mean_gdf = combined.groupby(group_by)[value_col].mean().reset_index()
-            else:
-                mean_val = combined[value_col].mean()
-                mean_gdf = pd.DataFrame({
-                    value_col: [mean_val],
-                    datetime_col: [target_date]
-                })
-
-            # Assign the target date as valid_time
-            mean_gdf[datetime_col] = target_date
-
-            climatology.append(mean_gdf)
-
-        climatology_gdf = gpd.GeoDataFrame(
-            pd.concat(climatology, ignore_index=True),
-            geometry="geometry",
-            crs=gdf.crs
-        )
-        return climatology_gdf
-
-
-    @staticmethod
-    def calculate_anomaly(event_gdf:gpd.GeoDataFrame, mean_climatology_gdf:gpd.GeoDataFrame,
-                          value_col:str, calcation:Literal["absolute", "relative"], datetime_col:str="valid_time"
-                          ):
         '''
         Calculate anomalies by subtracting/dividing event data from climatology means.
 
@@ -127,7 +35,7 @@ class Process:
             event_gdf (GeoDataFrame, required):
                 Event data with same structure as climatology.
             mean_climatology_gdf (GeoDataFrame, required):
-                Mean climatology from `calculate_mean_gdf`.
+                Mean climatology.
             value_col (str, required):
                 Column with numeric values to adjust.
             calcation (Literal["absolute", "relative"], required):
@@ -137,7 +45,7 @@ class Process:
 
 
         Returns:
-            GeoDataFrame:
+            data (GeoDataFrame):
                 Same structure as input with anomaly values in value_col.
         '''
         event_gdf = event_gdf.copy()
@@ -292,7 +200,7 @@ class Process:
                 DataFrame or GeoDataFrame
             value_col (str, required):
                 Name of the column to roll
-            windown (int, required):
+            window (int, required):
                 Size of the rolling window
             centering (bool, optional):
                 If True, window is centered on each point.
@@ -384,84 +292,6 @@ class Process:
             return gpd.GeoDataFrame(result, geometry="geometry", crs=gdf.crs)
         return result
 
-
-
-    @staticmethod
-    def calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
-        '''
-        Calculate daily climatology values across years for each day of year (1-365), using a ±pad-day window.
-
-        Parameters:
-            gdf (gpd.GeoDataFrame, required):
-                Input data with datetime and geometry.
-            value_col (str, required):
-                Column with numeric values.
-            event_date (datetime, required):
-                Date of the event (used to set year for output datetimes).
-            padding (int, optional):
-                Number of days on either side to include in the window (default: 15 → 30-day window)
-            datetime_col (str, optional):
-                Column with datetimes.
-
-        Returns:
-            gpd.GeoDataFrame
-        '''
-
-        gdf = gdf.copy()
-
-        # Ensure 'time' column is datetime
-        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-
-        # Boolean mask: keep all rows NOT Feb 29
-        mask = ~((gdf[datetime_col].dt.month == 2) & (gdf[datetime_col].dt.day == 29))
-
-        # Apply mask
-        gdf = gdf[mask]
-
-        days = np.arange(1, 366)  # Days of year
-
-        gdf['doy'] = gdf[datetime_col].dt.dayofyear
-
-        gdf['longitude'] = gdf.geometry.x
-        gdf['latitude'] = gdf.geometry.y
-
-        result_list = []
-
-        doy_mean_gdf = pd.DataFrame()  # Initialize empty DataFrame to store results
-        
-        for day in days:
-            # Build ±pad-day window (cyclically)
-            window_days = [(day + offset - 1) % 365 + 1 for offset in range(-padding, padding + 1)]
-
-            window_data = gdf[gdf['doy'].isin(window_days)]
-
-            # Compute mean at each location
-            daily_mean = (
-                window_data.groupby(['longitude', 'latitude'])[value_col]
-                .mean()
-                .reset_index()
-            )
-
-            daily_mean['doy'] = day
-            result_list.append(daily_mean)
-            doy_mean_gdf = pd.concat(result_list, ignore_index=True)
-
-        # Turn dataframe back into a gpd
-        return_gdf = gpd.GeoDataFrame(
-            doy_mean_gdf, 
-            geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), 
-            crs=gdf.crs
-        )
-
-        # turn doy (day of year) column back into datetime column
-        return_gdf[datetime_col] = pd.to_datetime(f'{event_date.year}', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
-        #return_gdf["valid_time"] = pd.to_datetime(return_gdf["doy"], format="%j").dt.strftime("%m-%d")
-
-        return return_gdf
-
-
-
-    # apply a weight to each value based on latitude
     @staticmethod
     def weighted_values(df:gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset, value_col:None|str, lat_col:str='latitude'
                         ) -> gpd.GeoDataFrame|xr.DataArray:
@@ -525,9 +355,6 @@ class Process:
             "xarray DataArray, or xarray Dataset"
             )
     
-    # J: So I don't know if this works anymore for spatial data. Had to change this because the old function (above) wasn't working for the trend analysis for some reason
-    # J: or if the output is even similar to the original
-    # J: this does not work for xarray, only geopandas
     @staticmethod
     def calculate_mean(gdf: gpd.GeoDataFrame|xr.DataArray|xr.Dataset, value_col: str, groupby_col: str|list[str]) -> gpd.GeoDataFrame|pd.DataFrame|xr.DataArray|xr.Dataset:
 
@@ -535,7 +362,7 @@ class Process:
         Calculate mean values grouped by specified columns.
 
         Parameters:
-            df (gpd.GeoDataFrame | xr.DataArray | xr.Dataset, required):
+            gdf (gpd.GeoDataFrame | xr.DataArray | xr.Dataset, required):
                 Input data.
             value_col (str, required):
                 Column with numeric values (for GeoDataFrame).
@@ -639,7 +466,7 @@ class Process:
                                padding:int=0, method:Literal["sum", "mean", "std", "quantile"]='mean') -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
         '''
         Calculate yearly values (mean, max, min) from daily data with optional rolling window and month subsetting.
-
+ 
         Parameters:
             gdf (gpd.GeoDataFrame, required):
                 Input data with daily values.
@@ -656,16 +483,15 @@ class Process:
                 Days for rolling window (default: 0, no rolling).
             method (str, optional):
                 Rolling method: 'mean', 'sum', 'std', or 'quantile' (default: 'mean').
-            
-            Returns:
-                gpd.GeoDataFrame:
-                    Yearly values as specified by `yearly_value`.
-
-            Raises:
-                ValueError:
-                    If `yearly_value` is not 'mean', 'max', or 'min'.
+        Returns:
+            data (gpd.GeoDataFrame):
+                Yearly values as specified by `yearly_value`.
+ 
+        Raises:
+            ValueError:
+                If `yearly_value` is not 'mean', 'max', or 'min'.
         '''
-
+ 
         # calculate running mean. if padding == 1 gdf gets automatically returned
         rolled_gdf = Process.calculate_rolling_n_days(
             gdf=gdf, 
@@ -675,30 +501,47 @@ class Process:
             centering=True, 
             method=method
         )
-
+ 
         rolled_gdf = cast(gpd.GeoDataFrame, rolled_gdf)
-
+ 
         # subset the gdf to remove potential padding
         if month_range is not None:
             rolled_gdf = Utils.subset_gdf(gdf=rolled_gdf, datetime_col=datetime_col, month_range=month_range)
-
+ 
         # add years to the gdf to calculate yearly values
         rolled_gdf = Utils.add_year_column(gdf=rolled_gdf, datetime_col=datetime_col)
-
+ 
         #change name to valid_time colum to f{padding}_day rolling date
         new_datetime_col = f"{padding}_day_rolling_date"
         rolled_gdf = rolled_gdf.rename(columns={datetime_col: new_datetime_col})
-
-
-        match yearly_value:
-            case 'mean':
-                return cast(gpd.GeoDataFrame, Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')), rolled_gdf
-            case 'max':
-                return cast(gpd.GeoDataFrame, Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
-            case 'min':
-                return cast(gpd.GeoDataFrame, Process.calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
-            case _:
-                raise ValueError("calculation must be 'mean', 'max', or 'min'")
+ 
+        if month_range[1] >= month_range[0]:
+            match yearly_value:
+                case 'mean':
+                    return cast(gpd.GeoDataFrame, Process.calculate_mean(gdf=rolled_gdf, value_col=value_col, groupby_col='year')), rolled_gdf
+                case 'max':
+                    return cast(gpd.GeoDataFrame, Process.calculate_max(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
+                case 'min':
+                    return cast(gpd.GeoDataFrame, Process.calculate_min(gdf=rolled_gdf, value_col=value_col, datetime_col=new_datetime_col, groupby_col='year')), rolled_gdf
+                case _:
+                    raise ValueError("calculation must be 'mean', 'max', or 'min'")
+        else:
+            shift_mask = rolled_gdf[new_datetime_col].dt.month < month_range[0]
+            rolled_gdf["year"] = rolled_gdf[new_datetime_col].dt.year
+            rolled_gdf.loc[shift_mask, "year"] -= 1
+            # Cross-year range
+            match yearly_value:
+                case 'min':
+                    result = rolled_gdf.loc[rolled_gdf.groupby(["year"])[value_col].idxmin(), ["year", new_datetime_col, value_col]].reset_index(drop=True)
+                    return cast(gpd.GeoDataFrame, result), rolled_gdf
+                case 'max':
+                    result = rolled_gdf.loc[rolled_gdf.groupby(["year"])[value_col].idxmax(), ["year", new_datetime_col, value_col]].reset_index(drop=True)
+                    return cast(gpd.GeoDataFrame, result), rolled_gdf
+                case 'mean':
+                    result = (rolled_gdf.groupby(["year"])[value_col].mean().reset_index())
+                    return cast(gpd.GeoDataFrame, result), rolled_gdf      
+                case _:
+                    raise ValueError("calculation must be 'mean', 'max', or 'min'")
 
     @staticmethod
     def calculate_seasonal_cycle(
@@ -775,12 +618,12 @@ class Process:
                 Polygons after Köppen–Geiger filtering.
         '''
         KG_GROUPS = {
-            "Tropical": [1,2,3],
-            "Arid": [4,5,6,7],
-            "Temperate": list(range(8,17)),
-            "Cold": list(range(17,29)),
-            "Polar": [29,30]
+            "Tropical": [1,2,3], "Arid": [4,5,6,7], "Temperate": list(range(8,17)), "Cold": list(range(17,29)), "Polar": [29,30]
         }
+        KG_SUBCLASSES = {"Af": [1],"Am": [2],"Aw": [3],"BWh": [4],"BWk": [5],"BSh": [6],"BSk": [7],"Csa": [8],"Csb": [9],"Csc": [10],"Cwa": [11],"Cwb": [12],
+                        "Cwc": [13],"Cfa": [14],"Cfb": [15],"Cfc": [16],"Dsa": [17],"Dsb": [18],"Dsc": [19],"Dsd": [20],"Dwa": [21],"Dwb": [22],"Dwc": [23],
+                        "Dwd": [24],"Dfa": [25],"Dfb": [26],"Dfc": [27],"Dfd": [28],"ET": [29],"EF": [30],
+                        }
 
         # Normalize category input
         if isinstance(category, str):
@@ -789,7 +632,12 @@ class Process:
         # Combine all selected codes
         codes = []
         for c in category:
-            codes.extend(KG_GROUPS[c])
+            if c in KG_GROUPS:
+                codes.extend(KG_GROUPS[c])
+            elif c in KG_SUBCLASSES:
+                codes.extend(KG_SUBCLASSES[c])
+            else:
+                raise ValueError(f"Unknown Köppen category: {c}")
 
         adjusted_polygons = []  # Start with an empty geometry
 
@@ -917,8 +765,8 @@ class Process:
                     group_key = 'time.year'
                 else:
                     seasonal_year = xr.where(
-                        filtered_months >= start_m, 
-                        filtered_years + 1, 
+                        filtered_months < start_m, 
+                        filtered_years - 1, 
                         filtered_years
                     )
                     da_filtered.coords["season_year"] = seasonal_year
@@ -1196,6 +1044,11 @@ class Process:
 
                 # Spatial Masking
                 mask = regionmask.mask_geopandas(study_region, da.longitude, da.latitude)
+                if np.isnan(mask).all():
+                    Utils.print(f"Skipping {label}: Coarse grid detected. Polygon missed all center points.")
+                    results["dropped"].append(original_entry) 
+                    continue
+                
                 ts_regional = da.where(mask == 0, drop=True)
 
                 # Product B: Regional Time Series (Latitude Weighted)
@@ -1230,7 +1083,7 @@ class Process:
                 else:
                     start_month, end_month = sc_month_range
                 # Create a dummy non-leap year to map month → doy
-                dummy_time = xr.cftime_range(start="2025-01-01", periods=365, freq="D")
+                dummy_time = xr.date_range(start="2025-01-01", periods=365, freq="D", use_cftime=True)
                 sc = sc.assign_coords(dayofyear_time=("dayofyear", dummy_time))
 
                 if end_month >= start_month:
@@ -1368,7 +1221,7 @@ class Process:
         Parameters:
         -----------
         data : xr.DataArray
-            3D DataArray with dimensions ('time', 'lat', 'lon')
+            3D DataArray with dimensions ('valid_time', 'lat', 'lon')
         pad : int
             Number of days on either side to include in the window (default: 15 → 30-day window)
         method : str
@@ -1384,6 +1237,9 @@ class Process:
         """
 
         # Sanity check
+        if 'time' in data.dims:
+            data = data.rename({'time': 'valid_time'})
+            
         if method not in ['std', 'mean', 'quantile']:
             raise ValueError("method must be one of: 'std', 'mean', 'quantile'")
 
@@ -1488,7 +1344,14 @@ class Process:
                 
                 # 5. Plotting
                 tryCatch({
-                    fname <- file.path(save_dir, paste0(model_name, "_", scenario_label, ".png"))
+                    # Define a subfolder specifically for plots
+                    plot_subdir <- file.path(save_dir, "modelfits")
+                    
+                    # Create the directory if it doesn't exist 
+                    if (!dir.exists(plot_subdir)) {
+                        dir.create(plot_subdir, recursive = TRUE, showWarnings = FALSE)
+                    }
+                    fname <- file.path(plot_subdir, paste0(model_name, "_", scenario_label, ".png"))
                     val_to_plot <- unlist(res)[,"rp_value"]
                     
                     # Use 'cov_hist' (cov_cf) exactly like your original loop

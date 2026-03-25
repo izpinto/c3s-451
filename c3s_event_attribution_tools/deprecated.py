@@ -18,8 +18,7 @@ from datetime import datetime, timedelta
 from typing import Union, Literal
 from .utils import Utils
 
-
-
+from .analogues import Analogues
 
 # Plot
 #===============================================================================================================================================================
@@ -352,6 +351,170 @@ def deprecated_subplot_gdf2(gdfs:gpd.GeoDataFrame, value_col:str, datetime_col:s
 
 # Process
 #===============================================================================================================================================================
+def deprecated_calculate_climatology(gdf, value_col:str, event_date:datetime, padding:int=15, datetime_col:str="valid_time") -> gpd.GeoDataFrame:
+    '''
+    Calculate daily climatology values across years for each day of year (1-365), using a ±pad-day window.
+
+    Parameters:
+        gdf (gpd.GeoDataFrame, required):
+            Input data with datetime and geometry.
+        value_col (str, required):
+            Column with numeric values.
+        event_date (datetime, required):
+            Date of the event (used to set year for output datetimes).
+        padding (int, optional):
+            Number of days on either side to include in the window (default: 15 → 30-day window)
+        datetime_col (str, optional):
+            Column with datetimes.
+
+    Returns:
+        gpd.GeoDataFrame
+    '''
+
+    gdf = gdf.copy()
+
+    # Ensure 'time' column is datetime
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+    # Boolean mask: keep all rows NOT Feb 29
+    mask = ~((gdf[datetime_col].dt.month == 2) & (gdf[datetime_col].dt.day == 29))
+
+    # Apply mask
+    gdf = gdf[mask]
+
+    days = np.arange(1, 366)  # Days of year
+
+    gdf['doy'] = gdf[datetime_col].dt.dayofyear
+
+    gdf['longitude'] = gdf.geometry.x
+    gdf['latitude'] = gdf.geometry.y
+
+    result_list = []
+
+    doy_mean_gdf = pd.DataFrame()  # Initialize empty DataFrame to store results
+    
+    for day in days:
+        # Build ±pad-day window (cyclically)
+        window_days = [(day + offset - 1) % 365 + 1 for offset in range(-padding, padding + 1)]
+
+        window_data = gdf[gdf['doy'].isin(window_days)]
+
+        # Compute mean at each location
+        daily_mean = (
+            window_data.groupby(['longitude', 'latitude'])[value_col]
+            .mean()
+            .reset_index()
+        )
+
+        daily_mean['doy'] = day
+        result_list.append(daily_mean)
+        doy_mean_gdf = pd.concat(result_list, ignore_index=True)
+
+    # Turn dataframe back into a gpd
+    return_gdf = gpd.GeoDataFrame(
+        doy_mean_gdf, 
+        geometry=gpd.points_from_xy(doy_mean_gdf.longitude, doy_mean_gdf.latitude), 
+        crs=gdf.crs
+    )
+
+    # turn doy (day of year) column back into datetime column
+    return_gdf[datetime_col] = pd.to_datetime(f'{event_date.year}', format='%Y') + pd.to_timedelta(return_gdf['doy'] - 1, unit='D')
+    #return_gdf["valid_time"] = pd.to_datetime(return_gdf["doy"], format="%j").dt.strftime("%m-%d")
+
+    return return_gdf
+
+def deprecated_calculate_mean_gdf(
+    gdf:gpd.GeoDataFrame, 
+    date_range: pd.core.arrays.datetimes.DatetimeArray,  # pyright: ignore[reportAttributeAccessIssue]
+    value_col: str, 
+    datetime_col: str="valid_time", 
+    padding: int=15,
+    year_range: None|tuple[int, int]=None, 
+    group_by: list[str]=["longitude", "latitude", "geometry"]
+):
+    '''
+    Calculate mean climatology values around each date in date_range across years,
+    returning a GeoDataFrame with the same structure as the input.
+
+    Parameters:
+        gdf (GeoDataFrame, required):
+            Historical data with datetime and geometry.
+        date_range (pd.DatetimeIndex, required):
+            Dates for which to calculate climatology means.
+        value_col (str, required):
+            Column with numeric values.
+        datetime_col (str, optional):
+            Column with datetimes.
+        padding (int, optional):
+            +/- days for the averaging window.
+        year_range (tuple[int, int], optional):
+            Year range to consider (start_year, end_year).
+        group_by (list[str], optional):
+            Columns to group by when averaging. If None, averages globally.
+            Default groups by: longitude, latitude, geometry.
+
+
+    Returns:
+        data (GeoDataFrame):
+            Same structure as input: longitude, latitude, valid_time, value_col, geometry
+    '''
+    gdf = gdf.copy()
+    gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+
+    # Filter by year range if specified
+    if year_range is not None:
+        start_year, end_year = year_range
+        gdf = gdf[(gdf[datetime_col].dt.year >= start_year) & (gdf[datetime_col].dt.year <= end_year)]
+
+    climatology = []
+
+    date_min = gdf[datetime_col].min()
+    date_max = gdf[datetime_col].max()
+
+    for target_date in date_range:
+        results = []
+        for year in gdf[datetime_col].dt.year.unique():
+            try:
+                center_date = datetime(year, target_date.month, target_date.day)
+            except ValueError:
+                # should we skip feb 29? use 28 instead? or use next day?
+                continue
+
+            # skip if center_date not in gdf
+            if pd.Timestamp(center_date) not in gdf[datetime_col].values:
+                Utils.print(f"Skipping {center_date} as it is not in the data date range {date_min} to {date_max}")
+                continue
+
+            # range should never exceed data range
+            start = max(center_date - timedelta(days=padding), date_min)
+            end = min(center_date + timedelta(days=padding), date_max)
+
+            subset = gdf[(gdf[datetime_col] >= start) & (gdf[datetime_col] <= end)]
+            results.append(subset)
+
+        combined = pd.concat(results, ignore_index=True)
+
+        # Average per geometry
+        if group_by:
+            mean_gdf = combined.groupby(group_by)[value_col].mean().reset_index()
+        else:
+            mean_val = combined[value_col].mean()
+            mean_gdf = pd.DataFrame({
+                value_col: [mean_val],
+                datetime_col: [target_date]
+            })
+
+        # Assign the target date as valid_time
+        mean_gdf[datetime_col] = target_date
+
+        climatology.append(mean_gdf)
+
+    climatology_gdf = gpd.GeoDataFrame(
+        pd.concat(climatology, ignore_index=True),
+        geometry="geometry",
+        crs=gdf.crs
+    )
+    return climatology_gdf
 
 def deprecated_calculate_anomaly(final_gdf:gpd.GeoDataFrame, event_gdf:gpd.GeoDataFrame, value_col:str, datetime_col:str='valid_time'):
     # Ensure datetime columns
@@ -508,10 +671,106 @@ def deprecated_n_day_accumulations_gdf2(
 # Util
 #===============================================================================================================================================================
 
+def deprecated_get_save_directory(dir: str="data", relative: bool=True, makedir: bool=True) -> str :
+        '''
+        Get (and) create a directory path for saving files.
 
+        Parameters:
+            dir (str):
+                directory name or path ('data' by default relative to the current working directory)
+            relative (bool):
+                whether the directory is relative to the current working directory (True by default)
+            makedir (bool):
+                whether to create the directory if it does not exist (True by default)
 
+        Returns:
+            str: The absolute path to the save directory.
+        '''
 
+        CURRENT_DIRECTORY = os.getcwd()
+        your_save_directory = os.path.abspath(os.path.join(CURRENT_DIRECTORY, dir)) if relative else dir
 
+        if makedir:
+            os.makedirs(your_save_directory, exist_ok=True)
+
+        return your_save_directory
+
+def deprecated_split_time_range_by_year_and_months(
+        start: datetime,
+        end: datetime,
+        months: list[str]|list[int]
+    ) -> list[tuple[datetime, datetime]]:
+        '''
+        Split a time range into sub-ranges filtered by specific months.
+
+        This helper method iterates through the time period between start and end,
+        extracting intervals that fall within the requested months. Each resulting
+        tuple represents a continuous range within a single calendar month.
+
+        Parameters:
+            start (datetime):
+                The beginning of the overall time range.
+            end (datetime):
+                The end of the overall time range.
+            months (list[str] | list[int]):
+                A list of months to include, provided as integers (1-12) or 
+                strings.
+        
+        Returns:
+            list[tuple[datetime, datetime]]: A list of time ranges as tuples of 
+            (start_date, end_date) defining the periods within the specified months.
+        '''
+        result = []
+
+        def last_day_of_month(dt: datetime) -> datetime:
+            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
+            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
+        
+        current = datetime(start.year, start.month, start.day)
+
+        while current <= end:
+            if current.month in months:
+                month_start = current
+                month_end = last_day_of_month(current)
+
+                actual_start = max(month_start, start)
+                actual_end = min(month_end, end)
+
+                if actual_start <= actual_end:
+                    result.append((actual_start, actual_end))
+                
+            if current.month == 12:
+                current = datetime(current.year + 1, 1, 1)
+            else:
+                current = datetime(current.year, current.month + 1, 1)
+        
+        return result
+
+def deprecated_shift_datetime_by_months(gdf:gpd.GeoDataFrame, shift_by:int, datetime_col:str='valid_time', direction:str='forward') -> gpd.GeoDataFrame:
+        '''
+        Shifts the datetime values in a specified column forward or backward by a given number of months.
+
+        Parameters:
+            gdf (gpd.GeoDataFrame, required):
+                The input GeoDataFrame.
+            shift_by (int, required):
+                The number of months by which to shift the dates.
+            datetime_col (str, optional):
+                The column name containing datetime objects to be shifted.
+            direction (str, optional):
+                The direction of the shift. Must be 'forward' (increase date) or 'backward' (decrease date). Defaults to 'forward'.
+
+        Returns:
+            gpd.GeoDataFrame: A copy of the input GeoDataFrame with the datetime column shifted.
+        '''
+        n_direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
+
+        gdf = gdf.copy()
+
+        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
+        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * n_direction
+
+        return gdf
 
 # Data
 #===============================================================================================================================================================
@@ -520,3 +779,52 @@ def deprecated_n_day_accumulations_gdf2(
 
 
 
+# Analogues
+
+@staticmethod
+def ED_similarity(event: iris.cube.Cube, p_cube: iris.cube.Cube, region: list[float], method: str) -> list:
+    '''
+    .. Deprecated:: 0.1.0
+    Use ed_similarity instead. 
+    '''
+    return Analogues.ed_similarity(event, p_cube, region, method)
+
+@staticmethod
+def ed_similarity(event: iris.cube.Cube, p_cube: iris.cube.Cube, region: list[float], method: str) -> list:
+    
+    '''
+    Returns similarity values based on euclidean distance
+
+    Parameters:
+        event (iris.cube.Cube):
+            Cube containing the event field to be compared.
+        p_cube (iris.cube.Cube):
+            Cube containing candidate fields to compare against the event.
+        region (list[float]):
+            Region for data selecion
+        method (str):
+            Method chosen, either 'ED' or 'CC'
+
+    Returns:
+        list:
+            List of similarity values for each spatial slice in P_cube, normalised to the range [0, 1].
+    '''
+    
+    if method not in ['ED', 'CC']:
+        raise ValueError("Invalid method. Choose 'ED' for Euclidean Distance or 'CC' for Correlation Coefficient.")
+
+    var_e = Analogues.extract_region(event, region)
+    var_p = Analogues.extract_region(p_cube, region)
+    var_d = []
+    
+    for yx_slice in var_p.slices(['grid_latitude', 'grid_longitude']):
+        
+        if method == 'ED':
+            var_d.append(Analogues.euclidean_distance(yx_slice, var_e))
+        
+        elif method == 'CC':
+            var_d.append(Analogues.correlation_coeffs(yx_slice, var_e))
+    
+    ED_max = np.max(np.max(var_d))
+    
+    return [(1-x / ED_max) for x in var_d]

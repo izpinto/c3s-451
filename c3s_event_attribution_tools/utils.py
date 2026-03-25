@@ -40,88 +40,8 @@ class Utils:
         # 4. Call the real Utils.print
         # We put the prefix first, then the original arguments
         print(prefix, *args, **kwargs)
-    
-    
-    """Utility class for various geospatial & temporal data operations, including region selection and data manipulation, splitting time ranges, etc."""
 
-    @staticmethod
-    def get_save_directory(dir:str="data", relative:bool=True, makedir:bool=True) -> str :
-        '''
-        Get (and) create a directory path for saving files.
 
-        Parameters:
-            subfolder (str):
-                directory name or path ('data' by default relative to the current working directory)
-            relative (bool):
-                whether the subfolder is relative to the current working directory (True by default)
-            makedir (bool):
-                whether to create the directory if it does not exist (True by default)
-
-        Returns:
-            str: The absolute path to the save directory.
-        '''
-
-        CURRENT_DIRECTORY = os.getcwd()
-        your_save_directory = os.path.abspath(os.path.join(CURRENT_DIRECTORY, dir)) if relative else dir
-
-        if makedir:
-            os.makedirs(your_save_directory, exist_ok=True)
-
-        return your_save_directory
-
-    @staticmethod
-    def split_time_range_by_year_and_months(
-        start: datetime,
-        end: datetime,
-        months: list[str]|list[int]
-    ) -> list[tuple[datetime, datetime]]:
-        '''
-        Split a time range into sub-ranges filtered by specific months.
-
-        This helper method iterates through the time period between start and end,
-        extracting intervals that fall within the requested months. Each resulting
-        tuple represents a continuous range within a single calendar month.
-
-        Parameters:
-            start (datetime):
-                The beginning of the overall time range.
-            end (datetime):
-                The end of the overall time range.
-            months (list[str] | list[int]):
-                A list of months to include, provided as integers (1-12) or 
-                strings.
-        
-        Returns:
-            list[tuple[datetime, datetime]]: A list of time ranges as tuples of 
-            (start_date, end_date) defining the periods within the specified months.
-        '''
-        result = []
-
-        def last_day_of_month(dt: datetime) -> datetime:
-            next_month = dt.replace(day=28) + timedelta(days=4)  # always moves to the next month
-            return next_month.replace(day=1) - timedelta(days=1)    # always returns back to the current month
-        
-        current = datetime(start.year, start.month, start.day)
-
-        while current <= end:
-            if current.month in months:
-                month_start = current
-                month_end = last_day_of_month(current)
-
-                actual_start = max(month_start, start)
-                actual_end = min(month_end, end)
-
-                if actual_start <= actual_end:
-                    result.append((actual_start, actual_end))
-                
-            if current.month == 12:
-                current = datetime(current.year + 1, 1, 1)
-            else:
-                current = datetime(current.year, current.month + 1, 1)
-        
-        return result
-    
-    
     @staticmethod
     def split_time_range_by_year(
         start: datetime,
@@ -182,7 +102,7 @@ class Utils:
                 Additional parameters to pass to the region picker service. Defaults to None.
 
         Returns:
-            Dict[str, Any]:
+            polygon (Dict[str, Any]):
                 The GeoJSON polygon data of the selected region upon successful completion.
 
         Raises:
@@ -269,8 +189,8 @@ class Utils:
                 longitude and latitude coordinates.
 
         Returns:
-            xarray.Dataset|xarray.DataArray: The dataset with longitudes wrapped to -180° to 180°
-                and sorted coordinates.
+            data (xarray.Dataset|xarray.DataArray): 
+                The dataset with longitudes wrapped to -180° to 180° and sorted coordinates.
         '''
         if "longitude" in ds.coords:
             lon = "longitude"
@@ -304,7 +224,7 @@ class Utils:
                 defining a polygon exterior ring.
 
         Returns:
-            tuple[list[Polygon],list[list[float]]]:
+            data (tuple[list[Polygon],list[list[float]]]):
                 A tuple containing:
                 - polygons: A list of shapely.geometry.Polygon objects.
                 - all_coords: A flattened list of all [longitude, latitude] coordinate pairs
@@ -354,7 +274,7 @@ class Utils:
                 to small squares/polygons for raster-like appearance. Defaults to 's' (square).
 
         Returns:
-            str:
+            image (str):
                 A base64-encoded PNG image string of the generated plot.
         '''
 
@@ -549,11 +469,11 @@ class Utils:
     def select_month_gdf(gdf:gpd.GeoDataFrame, datetime_col:str, month_range:tuple[int, int]) -> gpd.GeoDataFrame:
         '''
         Filters a GeoDataFrame to retain only the rows whose datetime column falls within a specified range of months.
-
+ 
         This function correctly handles ranges that cross the year boundary (e.g., December to February). For cross-year
         ranges, months in the second part of the range are temporarily shifted back one year to enable
         correct chronological filtering, though the original date values remain chronologically correct.
-
+ 
         Parameters:
             gdf (gpd.GeoDataFrame):
                 The input GeoDataFrame containing time-series data.
@@ -561,25 +481,22 @@ class Utils:
                 The column name in `gdf` containing datetime objects used for filtering.
             month_range (tuple[int, int]):
                 A tuple specifying the start month and end month as integers (1-12), i.e., (start_month, end_month).
-
+ 
         Returns:
             gpd.GeoDataFrame:
                 A new GeoDataFrame containing only the data within the specified month range.
         '''
         gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-
+ 
         months = gdf[datetime_col].dt.month
         start_month, end_month = month_range
-
+ 
         # if month range does not cross year boundary
         if end_month >= start_month:
             return gdf[(months >= start_month) & (months <= end_month)]
         else:
             # Cross-year range: select months across year boundary
             gdf = gdf[(months >= start_month) | (months <= end_month)]
-            # Shift early months (before start_month) back one year
-            shift_mask = gdf[datetime_col].dt.month < start_month
-            gdf.loc[shift_mask, datetime_col] = gdf.loc[shift_mask, datetime_col] - pd.DateOffset(years=1)
             return gdf
 
     @staticmethod
@@ -679,32 +596,6 @@ class Utils:
 
         return gdf
 
-    @staticmethod
-    def shift_datetime_by_months(gdf:gpd.GeoDataFrame, shift_by:int, datetime_col:str='valid_time', direction:str='forward') -> gpd.GeoDataFrame:
-        '''
-        Shifts the datetime values in a specified column forward or backward by a given number of months.
-
-        Parameters:
-            gdf (gpd.GeoDataFrame, required):
-                The input GeoDataFrame.
-            shift_by (int, required):
-                The number of months by which to shift the dates.
-            datetime_col (str, optional):
-                The column name containing datetime objects to be shifted.
-            direction (str, optional):
-                The direction of the shift. Must be 'forward' (increase date) or 'backward' (decrease date). Defaults to 'forward'.
-
-        Returns:
-            gpd.GeoDataFrame: A copy of the input GeoDataFrame with the datetime column shifted.
-        '''
-        n_direction = 1 if direction == 'forward' else -1 if direction == 'backward' else 0
-
-        gdf = gdf.copy()
-
-        gdf[datetime_col] = pd.to_datetime(gdf[datetime_col])
-        gdf[datetime_col] = gdf[datetime_col] + pd.DateOffset(months=shift_by) * n_direction
-
-        return gdf
 
     @staticmethod
     def get_value_col(parameter:str) -> str:

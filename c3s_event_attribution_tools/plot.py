@@ -150,7 +150,7 @@ class Plot:
                 The maximum precipitation value in the dataset.
 
         Returns:
-            numpy.ndarray:
+            data (numpy.ndarray):
                 An array of precipitation bin boundaries.
         '''
         if vmax <= 15:
@@ -169,7 +169,7 @@ class Plot:
 
     # get colormap
     @staticmethod
-    def get_colormap(map:str, vmin:float, vmax:float, value_col:str=None) -> tuple[str|ListedColormap, BoundaryNorm|TwoSlopeNorm]: 
+    def get_colormap(map:str, vmin:float, vmax:float, value_col:str|None=None) -> tuple[str|ListedColormap, BoundaryNorm|TwoSlopeNorm]: 
         '''
         Retrieves the appropriate colormap and normalization for plotting based on the data type.
 
@@ -392,9 +392,6 @@ class Plot:
         if save_path is not None:
             fig.savefig(save_path, bbox_inches="tight", dpi=fig.dpi)
 
-        clear_output(wait=True)
-        display(fig)
-
         return fig, ax_img
 
 
@@ -449,7 +446,7 @@ class Plot:
                 Matplotlib colormap name. Defaults to None (inferred from `value_col`).
             fig_size (tuple[int, int], optional):
                 Matplotlib figure size (width, height) in inches. Defaults to (7, 5).
-            polygons (list[Polygon] | None, optional)
+            polygons (list[Polygon] | None, optional):
                  A list of shapely Polygon objects to overlay on the map
                  (e.g., study area boundaries). Defaults to None.
             projection (cartopy.crs, optional):
@@ -468,7 +465,7 @@ class Plot:
                 An existing Matplotlib Axes object to plot onto. Defaults to None.
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The Matplotlib Axes object with the map.
@@ -560,11 +557,10 @@ class Plot:
                 family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=0)
             return fig, ax, img_ax
         else:
-            return fig, ax
+            return fig, ax, None
 
 
     # adjust this so:
@@ -786,17 +782,15 @@ class Plot:
             cbar.set_ticklabels(tick_labels)
             # Font settings
             plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
-            plt.show()
-        
+
         if subtitle:
             fig.suptitle(subtitle)
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.1)
             return fig, axes, img_ax
         else:
-            return fig, axes
+            return fig, axes, None
 
 
 
@@ -1073,9 +1067,6 @@ class Plot:
 
         return fig, ax, adjusted_polygons
 
-
-
-
     @staticmethod
     def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
                     fig_size:tuple=(12,6), dpi:int=100, show_grid:bool=True, line_style:str=':', marker_style:str=None, 
@@ -1135,44 +1126,12 @@ class Plot:
                 and {value_col}_ci_upper
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The Matplotlib Axes object with the time series plot.
                 - img_ax: The Axes object containing the added logo, or None if `add_logos` is False.
         '''
-
-        # plot_df = data.copy()
-        # plot_df[datetime_col] = pd.to_datetime(plot_df[datetime_col])
-        # plot_df["plot_time"] = plot_df[datetime_col]
-
-        # start_month, end_month = month_range
-
-        # # Determine if the period crosses the year boundary
-        # crosses_year = (end_month < start_month)
-
-        # # Adjust months so they plot in correct chronological order
-        # if crosses_year:
-        #     # For ranges like (7,6) or (9,3): shift early months (those before start_month) forward by one year
-        #     early_mask = plot_df["plot_time"].dt.month < start_month
-        #     plot_df.loc[early_mask, "plot_time"] += pd.DateOffset(years=1)
-
-        # # Sort chronologically after shifting
-        # plot_df = plot_df.sort_values("plot_time").reset_index(drop=True)
-
-        # # ----- Create label ticks -----
-        # # Define the logical start month (the first month of the period)
-        # if crosses_year:
-        #     # e.g. (7,6) → start in July 2024 and wrap to June 2025
-        #     label_start = pd.Timestamp(f"2024-{start_month:02d}-01")
-        # else:
-        #     # e.g. (1,6) or (3,9): simple one-year span
-        #     label_start = pd.Timestamp(f"2024-{start_month:02d}-01")
-
-        # # Always 12 months long
-        # labelticks = pd.date_range(label_start, periods=12, freq="MS")
-        # labels = labelticks.strftime("%b")
-
 
         #set font family globally
         if ax is None:
@@ -1217,22 +1176,18 @@ class Plot:
             ax.grid(True)
 
         # Format x-axis with date labels
-        #ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-        fig.autofmt_xdate(rotation=label_rotation)
+        plt.setp(ax.get_xticklabels(), rotation=label_rotation, ha='center')
 
-        # plt.tight_layout()
-        # plt.show()
+        fig.tight_layout()
+        
+        fig.subplots_adjust(bottom=0.15)
+
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.1)
             return fig, ax, img_ax
         else:
             img_ax = None
             return fig, ax, img_ax
-
-
-
-
 
     @staticmethod
     def plot_n_days(
@@ -1279,7 +1234,7 @@ class Plot:
                 the total number of plots. Defaults to 0.
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The last Matplotlib Axes object used for plotting (or the single Axes if only one plot).
@@ -1360,11 +1315,10 @@ class Plot:
         axs = axs[:nplots]
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=0)
             return fig, ax, img_ax
         else:
-            return fig, ax
+            return fig, ax, None
 
 
 
@@ -1390,7 +1344,7 @@ class Plot:
                          shared_colorbar:bool=True,
                          add_logos:bool=True,
                          polygon_color:str='cyan',
-                         contour_steps:int=200,
+                         contour_steps:int=2,
                          projection:cartopy.crs=ccrs.PlateCarree(),
                          grid_line_col:str='gray',
                          grid_line_size:float=.4,
@@ -1448,7 +1402,7 @@ class Plot:
             polygon_color (str, optional):
                 Color for the overlaid polygons. Defaults to 'cyan'.
             contour_steps (int, optional):
-                The interval between contour lines (e.g., 200 meters for Z500). Defaults to 200.
+                The interval between contour lines (e.g., 2 dam for Z500). Defaults to 2.
             projection (cartopy.crs, optional):
                 The Cartopy CRS for plotting data. Defaults to ccrs.PlateCarree().
             grid_line_col (str, optional):
@@ -1588,7 +1542,6 @@ class Plot:
             cbar.set_label(legend_title if legend_title else value_col,
                         labelpad=10, fontsize=27, weight='bold', color='#364563')
             plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), family=FONT_ROBOTO_CONDENSED_REGULAR.get_name(), fontsize=13)
-            plt.show()
 
         if subtitle:
             fig.suptitle(subtitle, y=1.15)
@@ -1604,11 +1557,10 @@ class Plot:
             )
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.090)
             return fig, axes, img_ax
         else:
-            return fig, axes
+            return fig, axes, None
     
     @staticmethod
     def plot_cordex_map(gdf, domains_dict, bbox, study_region, mapproj, selected_domain=None, add_logos=True):
@@ -1696,11 +1648,10 @@ class Plot:
 
         # Logos and Return
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
             return fig, ax, img_ax
         else:
-            return fig, ax
+            return fig, ax, None
 
     @staticmethod
     def plot_koppen_geiger(
@@ -1794,10 +1745,18 @@ class Plot:
         return fig, ax
     
     @staticmethod
-    def plot_seasonal_cycles(seasonal_cycles, obs_seasonal_cycle, value_col:str,
-                          legend_title:str=None, title:str=None, cmap:str=None, add_logos:bool=True,
-                          projection:cartopy.crs=ccrs.PlateCarree(), dpi:int=100,
-                          subtitle:bool=True):
+    def plot_seasonal_cycles(
+            seasonal_cycles, 
+            obs_seasonal_cycle, 
+            value_col:str,
+            legend_title:str|None=None, 
+            title:str|None=None, 
+            cmap:str|None=None, #unused? 
+            add_logos:bool=True,
+            projection:cartopy.crs=ccrs.PlateCarree(), #unused?
+            dpi:int=100, #unused?
+            subtitle:bool=True
+        ):
         
         '''
         Plots seasonal cycles for multiple models alongside observational data.
@@ -1814,13 +1773,13 @@ class Plot:
                 The variable name/column in the datasets to plot (e.g., 't2m', 'tp').
             legend_title (str | None, optional):
                 The title for the overall figure legend. Defaults to None.
-            add_logs (bool, optional):
+            add_logos (bool, optional):
                 Whether to add a custom image/logo below the plot. Defaults to True.
             subtitle (bool, optional):
                 Whether to add a subtitle to the figure. Defaults to True.
 
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]:
+            data (tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, matplotlib.axes.Axes | None]):
                 A tuple containing:
                 - fig: The generated Matplotlib Figure.
                 - ax: The Matplotlib Axes object with the seasonal cycle plots.
@@ -1860,7 +1819,6 @@ class Plot:
             fig.tight_layout(rect=[0, 0, 1, 0.95])
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.01)
             return fig, ax, img_ax
         else:
@@ -1872,6 +1830,8 @@ class Plot:
     def plot_spatial_maps(obs: xr.Dataset,
                       spatial_maps: dict,
                       value_col: str,
+                      study_region: gpd.GeoDataFrame,
+                      show_study: bool = True,
                       legend_title: str | None = None,
                       ncols: int = 4,
                       cmap: str | None = None,
@@ -1912,8 +1872,8 @@ class Plot:
         n_models = len(spatial_maps)
         nrows = int(np.ceil((ncols + n_models) / ncols))
         
-        fig = plt.figure(figsize=(ncols * 5, nrows * 2.5))
-        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.4, wspace=0.1)
+        fig = plt.figure(figsize=(ncols * 5, nrows * 3.5))
+        gs = gridspec.GridSpec(nrows, ncols, figure=fig, hspace=0.3, wspace=0.1)
         
         axs_flat = []
         for r in range(nrows):
@@ -1928,12 +1888,20 @@ class Plot:
         # Get colormap 
         cmap_obj, norm = Plot.get_colormap(cmap_name, vmin, vmax, value_col=value_col)
 
+        lon_min, lon_max = float(data_obs.longitude.min()), float(data_obs.longitude.max())
+        lat_min, lat_max = float(data_obs.latitude.min()), float(data_obs.latitude.max())
+        extent = [lon_min, lon_max, lat_min, lat_max]
+
         # Plot ERA5 (Top Left)
         ax_obs = axs_flat[0]
         ax_obs.pcolormesh(
             data_obs.longitude, data_obs.latitude, data_obs,
             cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
         )
+        ax_obs.set_extent(extent, crs=ccrs.PlateCarree())
+        if show_study:
+            ax_obs.add_geometries(study_region.geometry, crs=ccrs.PlateCarree(), 
+                                facecolor='none', edgecolor='green', linewidth=1.5, zorder=5)
         ax_obs.set_title("ERA5", fontsize=18, weight='medium', pad=12)
 
         # Turn off the rest of the first row (empty space)
@@ -1951,6 +1919,10 @@ class Plot:
                 da_clim.longitude, da_clim.latitude, da_clim,
                 cmap=cmap_obj, norm=norm, transform=ccrs.PlateCarree()
             )
+            ax.set_extent(extent, crs=ccrs.PlateCarree())        
+            if show_study:
+                ax.add_geometries(study_region.geometry, crs=ccrs.PlateCarree(), 
+                                  facecolor='none', edgecolor='green', linewidth=1.5, zorder=5)
             ax.set_title(name, fontsize=16, weight='medium', pad=10)
 
         # Apply Standard Features to active plots
@@ -2004,10 +1976,9 @@ class Plot:
             axs_flat[i].axis('off')
 
         if add_logos:
-            plt.close(fig)
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.1)
             return fig, axs_flat, img_ax
-        
+
         return fig, axs_flat, None
 
     @staticmethod
@@ -2137,9 +2108,8 @@ class Plot:
             if i % ncols == 0 and yaxis_label:
                 ax.set_ylabel(yaxis_label)
 
-            # Only set xlabel on bottom row
-            if i >= (nrows - 1) * ncols:
-                ax.set_xlabel(time_col.capitalize())
+            
+            ax.set_xlabel(time_col.capitalize())
 
             ax.grid(True, alpha=0.3)
             ax.legend(loc='best', fontsize='small')
@@ -2162,7 +2132,42 @@ class Plot:
 
         # Logos and Return
         if add_logos:
-            plt.close(fig)
+            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
+            return fig, axs_flat, img_ax
+        else:
+            return fig, axs_flat, None
+        
+    @staticmethod
+    def plot_two_figures( file_left, file_right, add_logos=True, title_fig1=None, title_fig2=None, title=None):
+        """
+        Plots two figures side-by-side with an optional logo footer.
+        """
+        # Create a figure with only 1 row for the data plots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7), facecolor='white')
+        axs_flat = [ax1, ax2]
+
+        # Load and display main images
+        img1 = mpimg.imread(file_left)
+        img2 = mpimg.imread(file_right)
+        
+        ax1.imshow(img1)
+        ax1.axis('off')
+        if title_fig1:
+            ax1.set_title(title_fig1, fontsize=16, fontweight='bold', y=0.9)
+
+        ax2.imshow(img2)
+        ax2.axis('off')
+        if title_fig2:
+            ax2.set_title(title_fig2, fontsize=16, fontweight='bold', y=0.9)
+
+        if title:   
+            fig.suptitle(title, fontsize=18, y=0.93)
+
+        plt.tight_layout()
+
+        # Logos and Return
+        img_ax = None
+        if add_logos:
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
             return fig, axs_flat, img_ax
         else:
@@ -2277,3 +2282,4 @@ class KoppenGeiger:
                 y -= 0.05
 
         return ax
+    

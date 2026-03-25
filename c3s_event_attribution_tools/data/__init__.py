@@ -9,8 +9,9 @@ from .variable import *
 from ..constants import XR_CONCAT_DATA_VARS
 
 import tempfile
+import regionmask
 import os
-
+import sys
 
 try:
     # Available in Python 3.12+ as per PEP 702
@@ -19,8 +20,10 @@ except ImportError:
     # Backport available in typing_extensions for older versions
     from typing_extensions import deprecated
 
-if __import__('sys').platform in ['linux']:
+if sys.platform in ['linux', 'darwin']:
     from .mars_client import *
+
+if sys.platform in ['linux']:
     import iris # type: ignore
 
 class DataClient():
@@ -31,7 +34,7 @@ class DataClient():
         The other classes e.g. CDSClient, MarsClient etc. are used in this client class.
         
     """
-    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, cordex_arco_token : str | None = None, cache_directory: str | None = None) -> None:
+    def __init__(self, cds_key: str, beacon_cache_url: str | None = None, beacon_token: str | None = None, mars_key: str | None = None, mars_email: str | None = None, cordex_arco_token : str | None = None, cache_directory: str | None = None) -> None:
         """
         Instantiate the DataClient by calling the constructor.
         
@@ -39,7 +42,8 @@ class DataClient():
             cds_key (str): The API key for the Climate Data Store (CDS).
             beacon_cache_url (str | None): Optional URL for the Beacon Cache service.
             beacon_token (str | None): Optional token for accessing the Beacon Cache.
-            mars_key (str | None): Optional API key for accessing MARS data.
+            mars_key (str | None): Optional API key for accessing MARS data. (Required if mars_email is provided)
+            mars_email (str | None): Optional email for accessing MARS data. (Required if mars_key is provided)
             cache_directory (str | None): Optional directory path for caching data locally. If not provided, a default cache directory will be used.
         """
         self.cds_client = CDSClient(cds_key, cache_directory)
@@ -57,16 +61,19 @@ class DataClient():
         
         
         if beacon_cache_url:
-            self.beacon_cache = BeaconClient(beacon_cache_url=beacon_cache_url, beacon_token=beacon_token)
-        if mars_key:
-            self.mars_client = MarsClient(key=mars_key)  # type: ignore for mars on non-linux platforms
+            try:
+                self.beacon_cache = BeaconClient(beacon_cache_url=beacon_cache_url, beacon_token=beacon_token)
+            except Exception as e:
+                Utils.print(f"Failed to initialize Beacon Cache client: {e}. No data will be fetched from Beacon Cache for the current session.")
+                self.beacon_cache = None
+        if mars_key and mars_email:
+            self.mars_client = MarsClient(key=mars_key, email=mars_email)  # type: ignore for mars on non-linux platforms
         if cordex_arco_token:
             self.cordex_client = CordexClient(cordex_token=cordex_arco_token)
             
     
             
 
-    
     def _get_beacon_cache_daily_single_levels_gpd(
         self, 
         bbox: tuple[float,float,float,float], 
@@ -143,11 +150,16 @@ class DataClient():
             min_retrieved_time = None
             max_retrieved_time = None
             if self.beacon_cache is not None:
-                gdf = self._get_beacon_cache_daily_single_levels_gpd(bbox, [time_range], variable)
-                if gdf is not None and not gdf.empty:
-                    gdfs.append(gdf)
-                    min_retrieved_time = gdf['valid_time'].min()
-                    max_retrieved_time = gdf['valid_time'].max()
+                try:
+                    gdf = self._get_beacon_cache_daily_single_levels_gpd(bbox, [time_range], variable)
+                    if gdf is not None and not gdf.empty:
+                        gdfs.append(gdf)
+                        min_retrieved_time = gdf['valid_time'].min()
+                        max_retrieved_time = gdf['valid_time'].max()
+                except Exception as e:
+                    Utils.print(f"Error fetching data from Beacon Cache: {e}. Proceeding to fetch data from CDS for the requested time range.")
+                    min_retrieved_time = None
+                    max_retrieved_time = None
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
                 # No valid data found in beacon cache or we are missing data for the requested time range
@@ -165,7 +177,7 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                     # Request missing data from CDS
-                    fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_single_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
@@ -173,8 +185,6 @@ class DataClient():
                     gdfs.append(gdf_cds)
         
             all_gdfs.append(gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True)))
-            
-        # ToDo re-implement MARS data fetching if needed
             
         return gpd.GeoDataFrame(pd.concat(all_gdfs, ignore_index=True))
         
@@ -194,11 +204,16 @@ class DataClient():
             min_retrieved_time = None
             max_retrieved_time = None
             if self.beacon_cache is not None:
-                ds = self._get_beacon_cache_daily_single_levels_xr(bbox, [time_range], variable)
-                if ds is not None and 'valid_time' in ds:
-                    dss.append(ds)
-                    min_retrieved_time = ds['valid_time'].values.min()
-                    max_retrieved_time = ds['valid_time'].values.max()
+                try:
+                    ds = self._get_beacon_cache_daily_single_levels_xr(bbox, [time_range], variable)
+                    if ds is not None and 'valid_time' in ds:
+                        dss.append(ds)
+                        min_retrieved_time = ds['valid_time'].values.min()
+                        max_retrieved_time = ds['valid_time'].values.max()
+                except Exception as e:
+                    Utils.print(f"Error fetching data from Beacon Cache: {e}. Proceeding to fetch data from CDS for the requested time range.")
+                    min_retrieved_time = None
+                    max_retrieved_time = None
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > np.datetime64(time_range[0]) or max_retrieved_time < np.datetime64(time_range[1]):
                 # No valid data found in beacon cache or we are missing data for the requested time range
@@ -215,15 +230,50 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < np.datetime64(time_range[1]):
                     # Request missing data from CDS
-                    fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
-                    ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
-                    dss.append(ds_cds)
+                    try:
+                        ds_cds = self.cds_client.fetch_data_daily_single_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable)
+                        dss.append(ds_cds)
+                    except Exception as e:
+                        Utils.print(f"Error fetching missing data from CDS: {e}. Could not retrieve data for the range: {fetch_start} - {fetch_end} from CDS.")
+            
+            ds_for_range = xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+            if self.mars_client is not None and 'valid_time' in ds_for_range and ds_for_range['valid_time'].size > 0:
+                try:
+                    max_existing_day = ds_for_range['valid_time'].values.max().astype('datetime64[D]')
+                    missing_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
+                    now_utc = datetime.utcnow()
+                    missing_end = min(time_range[1], now_utc)
+                    seven_days_ago = (pd.Timestamp(now_utc) - pd.Timedelta(days=7)).to_pydatetime()
+                    mars_fetch_start = max(missing_start, seven_days_ago)
+                    mars_fetch_end = min(missing_end, now_utc)
+
+                    # Strictly limit MARS retrieval to the rolling last 7 days.
+                    if mars_fetch_start <= mars_fetch_end:
+                        min_lon, min_lat, max_lon, max_lat = bbox
+                        mars_ds = self.mars_client.fetch_operational_data(
+                            variable=variable.mars_variable(),
+                            min_date=mars_fetch_start,
+                            max_date=mars_fetch_end,
+                            min_lon=min_lon,
+                            max_lon=max_lon,
+                            min_lat=min_lat,
+                            max_lat=max_lat,
+                        )
+
+                        ds_for_range = xr.concat([ds_for_range, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+                except Exception as e:
+                    Utils.print(f"Error while backfilling missing data from MARS: {e}")
+
+            all_dss.append(ds_for_range)
+
+        ds_merged = xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
         
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)) 
-        
-        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+        return ds_merged
     
     def _get_beacon_cache_daily_pressure_levels_gpd(
         self,
@@ -304,11 +354,16 @@ class DataClient():
             min_retrieved_time = None
             max_retrieved_time = None
             if self.beacon_cache is not None:
-                gdf = self._get_beacon_cache_daily_pressure_levels_gpd(bbox, [time_range], variable, levels)
-                if gdf is not None and not gdf.empty:
-                    gdfs.append(gdf)
-                    min_retrieved_time = gdf['valid_time'].min()
-                    max_retrieved_time = gdf['valid_time'].max()
+                try:
+                    gdf = self._get_beacon_cache_daily_pressure_levels_gpd(bbox, [time_range], variable, levels)
+                    if gdf is not None and not gdf.empty:
+                        gdfs.append(gdf)
+                        min_retrieved_time = gdf['valid_time'].min()
+                        max_retrieved_time = gdf['valid_time'].max()
+                except Exception as e:
+                    Utils.print(f"Error fetching data from Beacon Cache: {e}. Proceeding to fetch data from CDS for the requested time range.")
+                    min_retrieved_time = None
+                    max_retrieved_time = None
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > time_range[0] or max_retrieved_time < time_range[1]:
                 # No valid data found in beacon cache or we are missing data for the requested time range
@@ -325,7 +380,7 @@ class DataClient():
                 
                 if max_retrieved_time is None or max_retrieved_time < time_range[1]:
                     # Request missing data from CDS
-                    fetch_start = max_retrieved_time if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     gdf_cds = self.cds_client.fetch_data_daily_pressure_levels_gpd(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
@@ -355,11 +410,16 @@ class DataClient():
             max_retrieved_time = None
             
             if self.beacon_cache is not None:
-                ds = self._get_beacon_cache_daily_pressure_levels_xr(bbox, [time_range], variable, levels)
-                if ds is not None and 'valid_time' in ds:
-                    dss.append(ds)
-                    min_retrieved_time = ds['valid_time'].values.min()
-                    max_retrieved_time = ds['valid_time'].values.max()
+                try:
+                    ds = self._get_beacon_cache_daily_pressure_levels_xr(bbox, [time_range], variable, levels)
+                    if ds is not None and 'valid_time' in ds:
+                        dss.append(ds)
+                        min_retrieved_time = ds['valid_time'].values.min()
+                        max_retrieved_time = ds['valid_time'].values.max()
+                except Exception as e:
+                    Utils.print(f"Error fetching data from Beacon Cache: {e}. Proceeding to fetch data from CDS for the requested time range.")
+                    min_retrieved_time = None
+                    max_retrieved_time = None
             
             if min_retrieved_time is None or max_retrieved_time is None or min_retrieved_time > np.datetime64(time_range[0]) or max_retrieved_time < np.datetime64(time_range[1]):
                 # No valid data found in beacon cache or we are missing data for the requested time range
@@ -370,21 +430,55 @@ class DataClient():
                     fetch_start = time_range[0]
                     fetch_end = pd.to_datetime(min_retrieved_time).to_pydatetime() if min_retrieved_time is not None else time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
-                    ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
-                    max_retrieved_time = ds_cds['valid_time'].values.max()
-                    dss.append(ds_cds)
+                    try:
+                        ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
+                        max_retrieved_time = ds_cds['valid_time'].values.max()
+                        dss.append(ds_cds)
+                    except Exception as e:
+                        Utils.print(f"Error fetching missing data from CDS: {e}. Could not retrieve data for the range: {fetch_start} - {fetch_end} from CDS.")
                 
                 if max_retrieved_time is None or max_retrieved_time < np.datetime64(time_range[1]):
                     # Request missing data from CDS
-                    fetch_start = pd.to_datetime(max_retrieved_time).to_pydatetime() if max_retrieved_time is not None else time_range[0]
+                    fetch_start = (pd.to_datetime(max_retrieved_time) + pd.Timedelta(days=1)).to_pydatetime() if max_retrieved_time is not None else time_range[0]
                     fetch_end = time_range[1]
                     Utils.print(f"Fetching missing data from CDS for range: {fetch_start} - {fetch_end}")
                     ds_cds = self.cds_client.fetch_data_daily_pressure_levels_xr(bbox=bbox, time_ranges=[(fetch_start, fetch_end)], variable=variable, levels=levels)
                     dss.append(ds_cds)
+            ds_for_range = xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+            if self.mars_client is not None and 'valid_time' in ds_for_range and ds_for_range['valid_time'].size > 0:
+                try:
+                    max_existing_day = ds_for_range['valid_time'].values.max().astype('datetime64[D]')
+                    missing_start = pd.to_datetime(max_existing_day + np.timedelta64(1, 'D')).to_pydatetime()
+                    now_utc = datetime.utcnow()
+                    missing_end = min(time_range[1], now_utc)
+                    seven_days_ago = (pd.Timestamp(now_utc) - pd.Timedelta(days=7)).to_pydatetime()
+                    mars_fetch_start = max(missing_start, seven_days_ago)
+                    mars_fetch_end = min(missing_end, now_utc)
+
+                    # Strictly limit MARS retrieval to the rolling last 7 days.
+                    if mars_fetch_start <= mars_fetch_end:
+                        min_lon, min_lat, max_lon, max_lat = bbox
+                        mars_ds = self.mars_client.fetch_operational_data(
+                            variable=variable.mars_variable(),
+                            min_date=mars_fetch_start,
+                            max_date=mars_fetch_end,
+                            min_lon=min_lon,
+                            max_lon=max_lon,
+                            min_lat=min_lat,
+                            max_lat=max_lat,
+                        )
+
+                        ds_for_range = xr.concat([ds_for_range, mars_ds], dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+
+                except Exception as e:
+                    Utils.print(f"Error while backfilling missing data from MARS: {e}")
+
+            all_dss.append(ds_for_range)
+
+        ds_merged = xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
         
-            all_dss.append(xr.concat(dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS))
-        
-        return xr.concat(all_dss, dim='valid_time', data_vars=XR_CONCAT_DATA_VARS)
+        return ds_merged
     
     @deprecated("Use fetch_data_daily_single_levels instead")
     def temperature_2m_mean_gpd(self, bbox: tuple[float,float,float,float], time_ranges: list[tuple[datetime, datetime]], from_unit: str = "k", to_unit:str = "c") -> gpd.GeoDataFrame | None:
@@ -672,6 +766,7 @@ class DataClient():
         """
         return self.cds_client.fetch_data_daily_pressure_levels_xr(Variable.ERA5DailyPressureLevels.geopotential, bbox, time_ranges=[time_range], levels=[500])
     
+    @deprecated("Use fetch_era5_daily_single_levels_xr instead")
     def fetch_era5_daily_single_levels(self, variable: Variable.ERA5DailySingleLevel, bbox: tuple[float,float,float,float], time_ranges: list[tuple[datetime,datetime]], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame | None:
         gdf = self._get_daily_data_single_levels_gpd(bbox, time_ranges, variable)
         
@@ -691,6 +786,7 @@ class DataClient():
             ds[variable.column_name()].values = Conversions.convert_unit(ds[variable.column_name()].values, from_unit, to_unit)
         return ds
     
+    @deprecated("Use fetch_era5_daily_pressure_levels_xr instead")
     def fetch_era5_daily_pressure_levels(self, variable: Variable.ERA5DailyPressureLevels, bbox: tuple[float,float,float,float], time_ranges: list[tuple[datetime,datetime]], levels: list[int], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame | None:
         gdf = self._get_daily_data_pressure_levels_gpd(variable=variable, bbox=bbox, time_ranges=time_ranges, levels=levels)
         if from_unit and to_unit and gdf is not None and not gdf.empty:
@@ -707,6 +803,7 @@ class DataClient():
             ds[variable.column_name()].values = Conversions.convert_temperature(ds[variable.column_name()].values, from_unit, to_unit)
         return ds
     
+    @deprecated("Use fetch_era5_daily_single_levels_xr or fetch_era5_daily_pressure_levels_xr instead")
     def fetch_data(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], from_unit:str|None = None, to_unit:str|None = None) -> gpd.GeoDataFrame | None:
         """
         Retrieve climate data for a specified parameter, bounding box, and time range.
@@ -724,9 +821,6 @@ class DataClient():
                 Bounding box coordinates as (min_lon, min_lat, max_lon, max_lat).
             time_range (tuple[datetime, datetime]):
                 Start and end datetime for the data request.
-            months (list[str] | list[int] | None, optional):
-                Months to filter data. Can be month names (full or abbreviated) or integers (1–12).
-                Defaults to None (all months included).
             from_unit (str | None, optional):
                 Unit to convert from. If None, no conversion is applied.
             to_unit (str | None, optional):
@@ -773,6 +867,7 @@ class DataClient():
         
         return gdf
     
+    @deprecated("Use fetch_era5_daily_single_levels_xr or fetch_era5_daily_pressure_levels_xr instead")
     def fetch_data_xr(self, parameter:str, bbox: tuple[float,float,float,float], time_range: tuple[datetime,datetime], months:list[str]|list[int]|None=None, from_unit:str|None = None, to_unit:str|None = None) -> xr.Dataset | None:
         """
         Retrieve climate data for a specified parameter, bounding box, and time range.
@@ -831,6 +926,7 @@ class DataClient():
         
         return ds
     
+    @deprecated("Use Use fetch_era5_daily_single_levels_xr or fetch_era5_daily_pressure_levels_xr instead")
     def fetch_data_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame | None:
         """Alias for :meth:`fetch_data` returning a GeoDataFrame.
 
@@ -842,6 +938,7 @@ class DataClient():
         """
         return self.fetch_data(*args, **kwargs)
 
+    @deprecated("Use fetch_cmip6_xr instead")
     def fetch_cmip6_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame:
         """Alias for :meth:`fetch_cmip6` returning a GeoDataFrame.
 
@@ -853,6 +950,7 @@ class DataClient():
         """
         return self.fetch_cmip6(*args, **kwargs)
 
+    @deprecated("Use fetch_cmip6_xr instead")
     def fetch_cmip6(
         self,
         variable: Variable.CMIP6,
@@ -933,7 +1031,8 @@ class DataClient():
             bbox=bbox,
             time_range=time_range
         )
-        
+    
+    @deprecated("Use fetch_cordex_xr instead")
     def fetch_cordex(self, variable: str, model_url: str, bbox: tuple[float, float, float, float], time_range: tuple[datetime, datetime]) -> gpd.GeoDataFrame:
         """Fetch CORDEX data as a GeoDataFrame.
         
@@ -956,7 +1055,8 @@ class DataClient():
             bbox=bbox,
             time_range=time_range
         )
-        
+    
+    @deprecated("Use fetch_cordex_xr instead")
     def fetch_cordex_gpd(self, *args, **kwargs) -> gpd.GeoDataFrame:
         """Alias for :meth:`fetch_cordex` returning a GeoDataFrame.
 
@@ -983,6 +1083,7 @@ class DataClient():
     def GET(self, *args, **kwargs):
         return self.fetch_data(*args, **kwargs)
 
+    @deprecated("Use gmst_xr instead.")
     def gmst(self, time_range: tuple[datetime,datetime], from_unit:str = "k", to_unit:str = "c", bbox: tuple[float,float,float,float] | None = None) -> gpd.GeoDataFrame:
         """
         Fetch global mean surface temperature data for a given bounding box and time range.
@@ -1052,6 +1153,7 @@ class DataClient():
             experiment, variable, model, ensemble_member, period
         )
     
+    @deprecated("Use fetch_cmip5_monthly_single_levels_xr instead")
     def fetch_cmip5_monthly_single_levels_gpd(self, experiment:str, variable: Variable.CMIP5Monthly, model: str, ensemble_member: str, period: str) -> gpd.GeoDataFrame:
         """
         Fetch CMIP5 monthly data from CDS as a GeoDataFrame.
@@ -1079,7 +1181,8 @@ class DataClient():
         hist_range=(datetime(1950, 1, 1), datetime(2005, 12, 31)),
         fut_range=(datetime(2006, 1, 1), datetime(2100, 12, 31)),
         temp_res="daily",
-        max_models=None
+        max_models=None,
+        study_region=None,
     ) -> tuple[dict[str, xr.Dataset|xr.DataTree], dict[str, xr.Dataset|xr.DataTree]]:
         """
         Unified fetcher for CMIP6 and CORDEX data.
@@ -1118,7 +1221,7 @@ class DataClient():
         gcm_map = Utils.get_gcm_cordex_to_cmip5()
         # 2. Main Loop
         for entry in models:
-            if max_models and processed_count >= max_models:
+            if max_models is not None and processed_count >= max_models:
                 break
 
             model_id = None
@@ -1162,6 +1265,16 @@ class DataClient():
                         variable=variable_name_, model=model_id, bbox=bbox,
                         time_range=hist_range, experiment=exp_hist, temporal_resolution=temp_res
                     )
+
+                    if study_region is not None:
+                    # Resolution validation
+                        test_lon = ds_hist.get('longitude', ds_hist.get('lon'))
+                        test_lat = ds_hist.get('latitude', ds_hist.get('lat'))
+                        mask = regionmask.mask_geopandas(study_region, test_lon, test_lat)
+                        if np.isnan(mask).all():
+                            Utils.print(f"   ⚠️ Skipping {model_id}: Grid is too coarse for the study region.")
+                            continue
+                    
                     ds_fut = self.fetch_cmip6_xr(
                         variable=variable_name_, model=model_id, bbox=bbox,
                         time_range=fut_range, experiment=exp_fut, temporal_resolution=temp_res
