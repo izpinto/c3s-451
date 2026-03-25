@@ -130,6 +130,7 @@ class MarsClient:
             & (ds["longitude"] <= max_lon)
             & (ds["latitude"] >= min_lat)
             & (ds["latitude"] <= max_lat),
+            drop=True
         )
 
     def _normalize_time(self, ds: xr.Dataset) -> xr.Dataset:
@@ -347,7 +348,7 @@ class MarsClient:
             check=True,
         )
 
-        ds = xr.open_dataset(out_daily)
+        ds = xr.open_dataset(out_daily, chunks=-1)
         rename_map = {}
         if "time" in ds.coords:
             rename_map["time"] = "valid_time"
