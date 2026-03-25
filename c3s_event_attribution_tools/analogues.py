@@ -1580,7 +1580,7 @@ class Analogues:
     # Plot: Analogue variable
     @staticmethod
     def plot_analogue_variable(ana_var:str, event_cube:iris.cube.Cube, selected_daily_cube:iris.cube.Cube,
-                               dates_past:list, dates_prst:list, event_date:list
+                               dates_past:list, dates_prst:list, event_date:list, region:list[float]
                                ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
@@ -1630,6 +1630,7 @@ class Analogues:
 
         ax= plt.subplot(1,3,1,projection=ccrs.PlateCarree())
         c1 = ax.contourf(lons, lats, event_cube.data, levels=con_lev, cmap="RdBu_r", transform=ccrs.PlateCarree(), extend='both')
+        Analogues.plot_region(ax, region)
         cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
         cbar.ax.tick_params()
         ax.set_title('a) Event, '+str(event_date[2])+event_date[1]+str(event_date[0]), loc='left')
@@ -1637,6 +1638,7 @@ class Analogues:
 
         ax= plt.subplot(1,3,2,projection=ccrs.PlateCarree())
         c1 = ax.contourf(lons, lats, PAST_comp.data, levels=con_lev, cmap="RdBu_r", transform=ccrs.PlateCarree(), extend='both')
+        Analogues.plot_region(ax, region)
         cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
         cbar.ax.tick_params()
         ax.set_title('b) Past Analogues', loc='left')
@@ -1644,6 +1646,7 @@ class Analogues:
 
         ax= plt.subplot(1,3,3,projection=ccrs.PlateCarree())
         c1 = ax.contourf(lons, lats, PRST_comp.data, levels=con_lev, cmap="RdBu_r", transform=ccrs.PlateCarree(), extend='both')
+        Analogues.plot_region(ax, region)
         cbar = plt.colorbar(c1,fraction=0.046, pad=0.04)
         cbar.ax.tick_params()
         ax.set_title('c) Present Analogues', loc='left')
@@ -1655,9 +1658,9 @@ class Analogues:
 
     @staticmethod
     def plot_z500_slp_t2m_tp(ana_var:str, var_list:list[str], cube_map:dict[str, iris.cube.Cube], 
-                             R2:list[float], region:list[float], sig_field:list,
+                             R2:list[float], region:list[float], poly_region:list[float], sig_field:list,
                              event_date:list, dates_past:list, dates_prst:list,
-                             fig_size:tuple[float, float]=(12,12), dpi:int=200
+                             fig_size:tuple[float, float]=(12,12), dpi:int=200,  parameter:str='Tmean'
                              ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
@@ -1758,19 +1761,6 @@ class Analogues:
             lats=PRST_comp.coord('latitude').points
             lons=PRST_comp.coord('longitude').points 
 
-            # J: previous code for con_lev
-            # =====================================================================================
-            # if var == 'z500' or (var == 'msl' or var == 'slp'):  
-            #     con_lev = np.round(np.arange(np.min([PAST_comp.data, PRST_comp.data, event_cube.data]), np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
-            #     #con_lev = np.round(np.arange(-abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), abs(max(([np.min([PAST_comp.data, PRST_comp.data, E.data]), np.max([PAST_comp.data, PRST_comp.data, E.data])]), key=abs)), 2))
-            # if var == 't2m':
-            #     con_lev = np.round(np.arange(0, np.max([PAST_comp.data, PRST_comp.data, event_cube.data]), 2))
-            # if var == 'tp':
-            #     con_lev = np.arange(0, np.max([PAST_comp.data,PRST_comp.data, event_cube.data])/2, .2)
-            # =====================================================================================
-            
-            # J: new code for con_lev
-            # =====================================================================================
             if var == 'z500' or (var == 'msl' or var == 'slp'):
                 vmin = np.nanmin([
                     np.nanmin(PAST_comp.data),
@@ -1799,10 +1789,6 @@ class Analogues:
                 con_lev = np.arange(0, vmax / 2, 0.2)
             # =====================================================================================
 
-            # #J : test Utils.print
-            # Utils.print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
-            # ##############
-
             if con_lev.size < 2:
                 vmin = np.nanmin(event_cube.data)
                 vmax = np.nanmax(event_cube.data)
@@ -1815,11 +1801,7 @@ class Analogues:
                     vmax = vmin + 1e-3
 
                 con_lev = np.linspace(vmin, vmax, 5)
-
-            # #J : test Utils.print
-            # Utils.print("--->>>", var, np.nanmin(event_cube.data), np.nanmax(event_cube.data), con_lev)
-            # ##############
-
+                     
             # Plotting event
             ax= plt.subplot(len(var_list),4,(i*4)+1,projection=ccrs.PlateCarree())
             c1 = ax.contourf(lons, lats, event_cube.data, levels=con_lev, cmap=CMAP[0], transform=ccrs.PlateCarree(), extend='both')
@@ -1862,33 +1844,76 @@ class Analogues:
         ax= plt.subplot(4,4,1,projection=ccrs.PlateCarree())    
         ax.set_title('a) '+str(event_date[2])+event_date[1]+str(event_date[0])+'  '+var_list[0], loc='left')
         Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
         ax= plt.subplot(4,4,2,projection=ccrs.PlateCarree())  
         ax.set_title('b) Past Analogues', loc='left')
         Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
         ax= plt.subplot(4,4,3,projection=ccrs.PlateCarree())  
         ax.set_title('c) Present Analogues', loc='left')
         Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
         ax= plt.subplot(4,4,4,projection=ccrs.PlateCarree())  
         ax.set_title('d) Change (Present - Past)', loc='left')
         Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
 
+        if parameter == "Precipitation":
+            parameter = "Tmean"
 
-        plt.subplot(4,4,5,projection=ccrs.PlateCarree()) .set_title('e) '+var_list[1], loc='left')
-        plt.subplot(4,4,6,projection=ccrs.PlateCarree()) .set_title('f) ', loc='left')
-        plt.subplot(4,4,7,projection=ccrs.PlateCarree()) .set_title('g) ', loc='left')
-        plt.subplot(4,4,8,projection=ccrs.PlateCarree()) .set_title('h) ', loc='left')
+        ax=plt.subplot(4,4,5,projection=ccrs.PlateCarree()) 
+        ax.set_title('e) '+var_list[1], loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,6,projection=ccrs.PlateCarree()) 
+        ax.set_title('f) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,7,projection=ccrs.PlateCarree()) 
+        ax.set_title('g) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,8,projection=ccrs.PlateCarree()) 
+        ax.set_title('h) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
 
-        plt.subplot(4,4,9,projection=ccrs.PlateCarree()) .set_title('i) '+var_list[2], loc='left')
-        plt.subplot(4,4,10,projection=ccrs.PlateCarree()) .set_title('j) ', loc='left')
-        plt.subplot(4,4,11,projection=ccrs.PlateCarree()) .set_title('k) ', loc='left')
-        plt.subplot(4,4,12,projection=ccrs.PlateCarree()) .set_title('l) ', loc='left')
+        ax=plt.subplot(4,4,9,projection=ccrs.PlateCarree()) 
+        ax.set_title('i) '+var_list[2], loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,10,projection=ccrs.PlateCarree()) 
+        ax.set_title('j) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,11,projection=ccrs.PlateCarree()) 
+        ax.set_title('k) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,12,projection=ccrs.PlateCarree()) 
+        ax.set_title('l) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
 
-        plt.subplot(4,4,13,projection=ccrs.PlateCarree()) .set_title('m) '+var_list[3], loc='left')
-        plt.subplot(4,4,14,projection=ccrs.PlateCarree()) .set_title('n) ', loc='left')
-        plt.subplot(4,4,15,projection=ccrs.PlateCarree()) .set_title('o) ', loc='left')
-        plt.subplot(4,4,16,projection=ccrs.PlateCarree()) .set_title('p) ', loc='left')
+        ax=plt.subplot(4,4,13,projection=ccrs.PlateCarree()) 
+        ax.set_title('m) '+parameter, loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,14,projection=ccrs.PlateCarree()) 
+        ax.set_title('n) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,15,projection=ccrs.PlateCarree()) 
+        ax.set_title('o) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
+        ax=plt.subplot(4,4,16,projection=ccrs.PlateCarree()) 
+        ax.set_title('p) ', loc='left')
+        Analogues.plot_box(ax, region)
+        Analogues.plot_region(ax, poly_region)
 
         return fig, ax
+
 
     @staticmethod
     def plot_frequency_timeseries(yr_vals:list, roll_vals:list, Y1:int, Y2:int,
@@ -1969,7 +1994,7 @@ class Analogues:
     def plot_postage_stamps(ana_var:str, haz_var:str, cube_map:dict[str, iris.cube.Cube], event_date:list,
                             region:list, cmap:ListedColormap, dates_plot:list,
                             circ_past:iris.cube.CubeList, haz_past:iris.cube.CubeList,
-                            circ_plot:int, n:int, fig_size:tuple[float, float]=(12,12)
+                            circ_plot:int, n:int, fig_size:tuple[float, float]=(12,12), poly_region:list[float]=None
                             ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         
         '''
@@ -2031,7 +2056,8 @@ class Analogues:
                                   cmap = cmap,
                                   transform=ccrs.PlateCarree(),
                                   extend='max')
-
+            Analogues.plot_region(axs[0,0], poly_region)
+            
             fig.subplots_adjust(right=0.8, hspace=-.2)
             cbar_ax = fig.add_axes([0.81, 0.4, 0.01, 0.2])
             fig.colorbar(c, cax=cbar_ax, ticks=np.arange(0, 100, 10))
@@ -2043,6 +2069,7 @@ class Analogues:
                                   cmap = plt.cm.get_cmap('RdBu_r'),
                                   transform=ccrs.PlateCarree(),
                                   extend='max')
+            Analogues.plot_region(axs[0,0], poly_region)
 
         if circ_plot == 1:
             c2 = axs[0,0].contour(lons, lats, circ.data/100,
@@ -2062,12 +2089,14 @@ class Analogues:
                                 cmap = cmap,
                                 transform=ccrs.PlateCarree(),
                                 extend='max')
+                Analogues.plot_region(ax, poly_region)
             elif haz_var == 't2m':
                 c = ax.contourf(lons, lats, haz_past[i].data-273.15,
                                 levels=np.linspace(np.min(haz_past[i].data-273.15), np.max(haz_past[i].data-273.15), 9),
                                 cmap = plt.cm.get_cmap('RdBu_r'),
                                 transform=ccrs.PlateCarree(),
                                 extend='max')
+                Analogues.plot_region(ax, poly_region)
 
             if circ_plot == 1:
                 c2 = ax.contour(lons, lats, circ_past[i].data/100,
