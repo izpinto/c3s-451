@@ -288,7 +288,7 @@ class MarsClient:
             check=True,
         )
 
-        ds = xr.open_dataset(out_daily)
+        ds = xr.open_dataset(out_daily, chunks=-1)
         ds = ds.rename({"time": "valid_time"})
         return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
@@ -414,7 +414,7 @@ class MarsClient:
             check=True,
         )
 
-        ds = xr.open_dataset(out_daily)
+        ds = xr.open_dataset(out_daily, chunks=-1)
         rename_map = {}
         if "time" in ds.coords:
             rename_map["time"] = "valid_time"
@@ -500,7 +500,7 @@ class MarsClient:
             check=True,
         )
 
-        ds = xr.open_dataset(out_daily)
+        ds = xr.open_dataset(out_daily, chunks=-1)
         Utils.print(ds)
         ds = ds.rename({"mn2t6": "t2m", "time": "valid_time"})
         return self._normalize_dataset_and_filter_bbox(
@@ -583,7 +583,7 @@ class MarsClient:
             check=True,
         )
 
-        ds = xr.open_dataset(out_daily)
+        ds = xr.open_dataset(out_daily, chunks=-1)
         ds = ds.rename({"mx2t6": "t2m", "time": "valid_time"})
         return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
@@ -653,7 +653,7 @@ class MarsClient:
             check=True,
         )
 
-        ds = xr.open_dataset(out_daily)
+        ds = xr.open_dataset(out_daily, chunks=-1)
         ds = ds.rename({"time": "valid_time"})
         return self._normalize_dataset_and_filter_bbox(
             ds, min_lon, max_lon, min_lat, max_lat
