@@ -784,6 +784,12 @@ class DataClient():
             # Convert units based on variable type.
             # ToDo: Implement a more general conversion mechanism for other variable types
             ds[variable.column_name()].values = Conversions.convert_unit(ds[variable.column_name()].values, from_unit, to_unit)
+        
+        # Remove unnecessary variables to save memory, keeping only the requested variable and coordinates.
+        if ds is not None:
+            droppable_vars = ['number', 'time_bnds']
+            ds = ds.drop_vars([var for var in droppable_vars if var in ds])
+        
         return ds
     
     @deprecated("Use fetch_era5_daily_pressure_levels_xr instead")
@@ -801,6 +807,12 @@ class DataClient():
             # Convert units based on variable type.
             # ToDo: Implement a more general conversion mechanism for other variable types
             ds[variable.column_name()].values = Conversions.convert_temperature(ds[variable.column_name()].values, from_unit, to_unit)
+    
+        # Remove unnecessary variables to save memory, keeping only the requested variable and coordinates.
+        if ds is not None:
+            droppable_vars = ['number', 'time_bnds']
+            ds = ds.drop_vars([var for var in droppable_vars if var in ds])
+            
         return ds
     
     @deprecated("Use fetch_era5_daily_single_levels_xr or fetch_era5_daily_pressure_levels_xr instead")
