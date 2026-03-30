@@ -940,7 +940,8 @@ class Plot:
                          polygons:list[Polygon],
                          elevation:xr.DataArray,
                          threshold:int=None, 
-                         projection:cartopy.crs=ccrs.PlateCarree()
+                         projection:cartopy.crs=ccrs.PlateCarree(),
+                         add_logos:bool=True
                          ) -> tuple[plt.Figure, plt.Axes, list[Polygon]]:
         '''
         Adjusts input regions by an elevation threshold and visualizes the result on a map.
@@ -962,7 +963,8 @@ class Plot:
                 Defaults to 100000 (effectively no threshold).
             projection (cartopy.crs, optional):
                 The Cartopy coordinate reference system for plotting. Defaults to ccrs.PlateCarree().
-
+            add_logos (bool, optional):
+                Whether to add logos to the plot. Defaults to True.
         Returns:
             tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, list[Polygon]]:
                 A tuple containing:
@@ -971,7 +973,7 @@ class Plot:
                 - adjusted_polygons: A list of new shapely Polygon objects representing the
                 areas of the original polygons that are below the elevation threshold.
         '''
-        threshold = threshold if threshold else 100000
+
 
         all_coords = []
         adjusted_polygons = []
@@ -986,8 +988,22 @@ class Plot:
                 lon=slice(minx-0.5, maxx+0.5),
                 lat=slice(miny-0.5, maxy+0.5)  
             )   
-            elev_vals = elev_subset.squeeze().values
 
+            # Check the LOCAL maximum elevation
+            local_max = elev_subset.max().values
+
+            # If threshold is above local max, keep the original
+            # Check if we should skip the clipping logic
+            if threshold is None or threshold >= local_max:
+                adjusted_polygons.append(poly) # Keep original
+                all_coords.extend(coords)
+                continue
+            elev_subset = elev_subset.interp(
+                lon=np.arange(minx, maxx, 0.05), 
+                lat=np.arange(miny, maxy, 0.05), 
+                method="linear"
+            )
+            elev_vals = elev_subset.squeeze().values
             if elev_subset.lat.values[0] < elev_subset.lat.values[-1]:
                 elev_vals = elev_vals[::-1, :]  
                 lat = elev_subset.lat.values[::-1]
@@ -1030,7 +1046,8 @@ class Plot:
 
         fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': projection})
 
-        ax.set_title(f"Selected regions under {threshold} m elevation")
+        title_text = f"Selected regions under {threshold} m" if threshold is not None else "Original regions (No elevation threshold)"
+        ax.set_title(title_text)
         ax.add_feature(cfeature.BORDERS, linestyle=':')
         ax.add_feature(cfeature.COASTLINE)
         ax.add_feature(cfeature.LAND, edgecolor='black')
@@ -1055,7 +1072,7 @@ class Plot:
             add_colorbar=True,
             add_labels=False,
             vmin=0, 
-            vmax=threshold  
+            vmax=local_max  
         )
 
         for poly in polygons:
@@ -1065,7 +1082,13 @@ class Plot:
         for geom in adjusted_polygons:
             Plot.plot_geometry(geom, ax)
 
-        return fig, ax, adjusted_polygons
+        if add_logos:
+            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.1)
+            return fig, ax, img_ax, adjusted_polygons
+        else:
+            img_ax = None
+            return fig, ax, img_ax, adjusted_polygons
+
 
     @staticmethod
     def plot_timeserie(data, value_col:str, title:str, x_label:str, y_label:str, datetime_col:str='valid_time', 
@@ -1662,7 +1685,8 @@ class Plot:
         projection=ccrs.PlateCarree(),
         fontsize: int = 8,
         figsize=(10, 10),
-        extra_polygons: list[Polygon] = None
+        extra_polygons: list[Polygon] = None,
+        add_logos=True
     ) -> tuple[plt.Figure, plt.Axes]:
         '''
         Plots Köppen–Geiger climate classifications for a selected region and polygons.
@@ -1742,7 +1766,14 @@ class Plot:
 
         KoppenGeiger.draw_koppen_legend(fig, kg_legend)
 
-        return fig, ax
+        # Logos and Return
+        if add_logos:
+            fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-0.02)
+            return fig, ax, img_ax
+        else:
+            return fig, ax, None
+        
+
     
     @staticmethod
     def plot_seasonal_cycles(

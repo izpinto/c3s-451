@@ -1410,3 +1410,52 @@ class Utils:
                 }
             }
         }
+    
+    @staticmethod
+    def get_cmip6_models(parameter_name):
+        """
+        Retrieves the list of available GCM models based on the weather parameter.
+        
+        Args:
+            parameter_name (str): The parameter to fetch models for 
+                                (e.g., 'tmean', 'precipitation', 'tmax', 'tmin')
+                                
+        Returns:
+            list: A list of GCM model strings.
+        """
+        
+        # Dictionary mapping parameters to their respective bolded models
+        model_registry = {
+            'Tmean': [
+                'access_cm2', 'awi_cm_1_1_mr', 'bcc_csm2_mr', 'canesm5', 'cesm2', 'cesm2_waccm', 
+                'cmcc_cm2_sr5', 'cmcc_esm2', 'cnrm_cm6_1', 'cnrm_cm6_1_hr', 'cnrm_esm2_1', 'ec_earth3_cc', 
+                'fgoals_g3', 'gfdl_esm4', 'hadgem3_gc31_ll', 'hadgem3_gc31_mm', 'iitm_esm', 'inm_cm4_8', 
+                'inm_cm5_0', 'ipsl_cm6a_lr', 'kace_1_0_g', 'miroc6', 'miroc_es2l', 'mpi_esm1_2_lr', 'mri_esm2_0', 
+                'nesm3', 'noresm2_mm', 'taiesm1', 'ukesm1_0_ll'
+            ],
+            'Precipitation': [
+                'access_cm2', 'bcc_csm2_mr', 'cmcc_esm2', 'cnrm_cm6_1_hr', 
+                'cnrm_esm2_1', 'ec_earth3_cc', 'fgoals_f3_l', 'gfdl_esm4', 
+                'hadgem3_gc31_ll', 'iitm_esm', 'inm_cm5_0', 'ipsl_cm6a_lr', 
+                'miroc6', 'miroc_es2l', 'mpi_esm1_2_lr', 'mri_esm2_0', 'noresm2_mm'
+            ],
+            'Tmax': [
+                'access_cm2', 'awi_cm_1_1_mr', 'cmcc_esm2', 'cnrm_cm6_1_hr', 'cnrm_esm2_1', 
+                'ec_earth3_cc', 'gfdl_esm4', 'inm_cm4_8', 'inm_cm5_0', 'kace_1_0_g', 'kiost_esm', 
+                'miroc6', 'miroc_es2l', 'mpi_esm1_2_lr', 'mri_esm2_0', 'noresm2_mm'
+            ],
+            'Tmin': [
+                'access_cm2', 'awi_cm_1_1_mr', 'bcc_csm2_mr', 'canesm5', 'cmcc_esm2', 
+                'cnrm_cm6_1_hr', 'cnrm_esm2_1', 'ec_earth3_cc', 'gfdl_esm4', 'inm_cm4_8', 
+                'inm_cm5_0', 'kace_1_0_g', 'miroc6', 'miroc_es2l', 'mpi_esm1_2_lr', 'mri_esm2_0', 'noresm2_mm'
+            ]
+        }
+
+        # Normalize input to lowercase to prevent case-sensitivity issues
+        key = parameter_name
+
+        if key in model_registry:
+            return model_registry[key]
+        else:
+            print(f"Warning: Parameter '{parameter_name}' not found. Returning empty list.")
+            return []
