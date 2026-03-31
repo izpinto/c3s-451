@@ -861,20 +861,24 @@ class Utils:
     
         year = start_year
     
+        # Handle first year
+        if wraps_year:
+            first_start = datetime(year, 1, 1)
+            first_end_day = calendar.monthrange(year, end_month)[1]
+            first_end = datetime(year, end_month, first_end_day)
+    
+            if first_start <= end_date:
+                yield first_start, first_end
+    
         while True:
             window_start = datetime(year, start_month, 1)
+    
+            if window_start > end_date:
+                break
     
             end_year = year + 1 if wraps_year else year
             end_day = calendar.monthrange(end_year, end_month)[1]
             window_end = datetime(end_year, end_month, end_day)
-    
-            # Stop if start is beyond global end_date
-            if window_start > end_date:
-                break
-    
-            # Clip end to global end_date
-            if window_end > end_date:
-                window_end = end_date
     
             yield window_start, window_end
     
