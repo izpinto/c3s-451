@@ -14,6 +14,7 @@ from io import BytesIO
 from .plot import *
 import os
 import warnings
+import calendar
 
 from typing import Dict, Union
 import xarray as xr
@@ -834,6 +835,50 @@ class Utils:
                 continue
 
         return df_dict
+    
+    @staticmethod
+    def generate_month_windows(start_year, end_date, months):
+        """
+        Generates a sequence of (start_date, end_date) tuples for a specific set of months 
+        recurring annually from a starting year until a global end date.
+        
+        The function handles seasons that cross the calendar year boundary (e.g., Dec-Jan-Feb).
+        
+        Args:
+            start_year (int): The calendar year to begin generating windows.
+            end_date (datetime): The final cutoff date. No windows will start after this.
+            months (list): A list of month abbreviations (e.g., ['Dec', 'Jan', 'Feb']). 
+                        Uses the first and last elements to define the window.
+                        
+        Yields:
+            tuple: (window_start, window_end) as datetime objects.
+        """
+
+        start_month = datetime.strptime(months[0], "%b").month
+        end_month = datetime.strptime(months[-1], "%b").month
+    
+        wraps_year = start_month > end_month
+    
+        year = start_year
+    
+        while True:
+            window_start = datetime(year, start_month, 1)
+    
+            end_year = year + 1 if wraps_year else year
+            end_day = calendar.monthrange(end_year, end_month)[1]
+            window_end = datetime(end_year, end_month, end_day)
+    
+            # Stop if start is beyond global end_date
+            if window_start > end_date:
+                break
+    
+            # Clip end to global end_date
+            if window_end > end_date:
+                window_end = end_date
+    
+            yield window_start, window_end
+    
+            year += 1
     
     @staticmethod
     def get_validation_details(mod_est, mod_low, mod_high, obs, param_name):
