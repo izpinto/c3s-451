@@ -30,6 +30,8 @@ import matplotlib.gridspec as gridspec
 from IPython.display import display, clear_output
 import re
 from shapely.geometry import box
+from shapely.ops import unary_union
+from rasterio.transform import from_bounds
 
 # set font directory
 BASE_DIR = os.path.dirname(__file__)
@@ -513,9 +515,8 @@ class Plot:
 
         # Draw polygons if provided
         if polygons is not None:
-            for poly in polygons:
-                x, y = poly.exterior.xy
-                ax.plot(x, y, color=polygon_color, linewidth=2, transform=projection)
+            ax.add_geometries(polygons, crs=projection, facecolor='none', 
+                        edgecolor='green', linewidth=1, zorder=5)
 
         if title is not None:
             ax.set_title(title, fontdict={'fontsize': 27, 'fontweight': 'bold'})
@@ -876,11 +877,8 @@ class Plot:
         ax.set_title("Selected region")
 
         # Plot selected polygons
-        for polygon in polygons:
-            x, y = polygon.exterior.xy
-            ax.plot(x, y, color='red', linewidth=2, transform=projection)
-            ax.fill(x, y, color='red', alpha=0.3, transform=projection)
-
+        ax.add_geometries(polygons, crs=projection, facecolor='none', 
+                        edgecolor='red', linewidth=2, zorder=6)
         return fig, ax
 
 
@@ -936,158 +934,133 @@ class Plot:
 
 
     @staticmethod
-    def elevation_region(data:dict,
-                         polygons:list[Polygon],
-                         elevation:xr.DataArray,
-                         threshold:int=None, 
-                         projection:cartopy.crs=ccrs.PlateCarree(),
-                         add_logos:bool=True
-                         ) -> tuple[plt.Figure, plt.Axes, list[Polygon]]:
-        '''
-        Adjusts input regions by an elevation threshold and visualizes the result on a map.
+    def elevation_region(polygons, elevation_nc, bbox, threshold, add_logos=True):
+        """
+        Subsets a list of polygons based on an elevation threshold and visualizes the result.
 
-        This function takes geographical regions (polygons defined in a GeoJSON-like dictionary),
-        filters them to only include areas where the background elevation is below a given
-        threshold, and plots the original and adjusted regions over the elevation map.
+        This function masks a Digital Elevation Model (DEM) by a user-defined threshold, 
+        vectorizes that mask into new polygons, and intersects them with the original 
+        study regions. It handles coordinate orientation (latitude flipping) and 
+        pixel-edge alignment to ensure spatial accuracy.
 
-        Parameters:
-            data (dict):
-                A GeoJSON-like dictionary containing feature geometries (polygons) under the 'features' key.
-            polygons (list[Polygon]):
-                A list of original shapely Polygon objects derived from `data`.
-            elevation (xr.DataArray):
-                An Xarray DataArray containing elevation data (lon, lat coordinates)
-                to be used for thresholding and background plotting.
-            threshold (int, optional):
-                The maximum elevation value (in meters) to retain in the adjusted regions.
-                Defaults to 100000 (effectively no threshold).
-            projection (cartopy.crs, optional):
-                The Cartopy coordinate reference system for plotting. Defaults to ccrs.PlateCarree().
-            add_logos (bool, optional):
-                Whether to add logos to the plot. Defaults to True.
+        Args:
+            polygons (list): List of Shapely Polygon or MultiPolygon objects.
+            elevation_nc (xr.Dataset): Dataset containing the 'data' elevation variable.
+            bbox (tuple): Bounding box in the format (min_lon, min_lat, max_lon, max_lat).
+            threshold (float): Elevation threshold in meters.
+            add_logos (bool): Whether to append logos to the bottom of the figure.
+            LOGO_HORIZON_PATH (str): File path for the logo image.
+
         Returns:
-            tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, list[Polygon]]:
-                A tuple containing:
-                - fig: The generated Matplotlib Figure.
-                - ax: The Matplotlib Axes object with the map.
-                - adjusted_polygons: A list of new shapely Polygon objects representing the
-                areas of the original polygons that are below the elevation threshold.
-        '''
-
-
-        all_coords = []
-        adjusted_polygons = []
-
-        for feature in data["features"]:
-
-            coords = feature['geometry']['coordinates'][0]
-            all_coords.extend(coords)
-            poly = Polygon(coords)  
-            minx, miny, maxx, maxy = poly.bounds
-            elev_subset = elevation.sel(
-                lon=slice(minx-0.5, maxx+0.5),
-                lat=slice(miny-0.5, maxy+0.5)  
-            )   
-
-            # Check the LOCAL maximum elevation
-            local_max = elev_subset.max().values
-
-            # If threshold is above local max, keep the original
-            # Check if we should skip the clipping logic
-            if threshold is None or threshold >= local_max:
-                adjusted_polygons.append(poly) # Keep original
-                all_coords.extend(coords)
-                continue
-            elev_subset = elev_subset.interp(
-                lon=np.arange(minx, maxx, 0.05), 
-                lat=np.arange(miny, maxy, 0.05), 
-                method="linear"
-            )
-            elev_vals = elev_subset.squeeze().values
-            if elev_subset.lat.values[0] < elev_subset.lat.values[-1]:
-                elev_vals = elev_vals[::-1, :]  
-                lat = elev_subset.lat.values[::-1]
+            tuple: (fig, ax, img_ax, adjusted_polygons)
+        """
+        
+        # --- 1. Data Slicing and Pre-processing 
+        min_lon, min_lat, max_lon, max_lat = bbox
+        
+        # Ensure longitude consistency and slice the data to the study area
+        elev_ds = elevation_nc
+        elev_ds = elevation_nc.sortby("lon").sortby("lat")
+        subset = elev_ds.sel(lon=slice(min_lon, max_lon), lat=slice(min_lat, max_lat))
+        
+        # Extract values and squeeze to ensure a 2D array [lat, lon]
+        elevation_values = subset['data'].values.squeeze()
+        local_max = np.nanmax(elevation_values)
+        
+        # --- 2. Mask Creation and Vectorization ---
+        if threshold is not None:
+            # COORDINATE FLIP LOGIC: 
+            # Rasterio's transform assumes the first row of data is the NORTH. 
+            # If the NetCDF stores data from South-to-North (Ascending), we flip the array 
+            # vertically so the indexing aligns with the geographic transform.
+            if subset.lat[0] < subset.lat[-1]: 
+                mask = (elevation_values[::-1, :] < threshold).astype(np.uint8)
             else:
-                lat = elev_subset.lat.values
+                mask = (elevation_values < threshold).astype(np.uint8)
 
-            lon = elev_subset.lon.values    
-            lon2d, lat2d = np.meshgrid(lon, lat)    
-            below_thresh = elev_vals <= threshold   
-            inside_poly = contains_xy(poly, lon2d, lat2d)   
-            final_mask = below_thresh & inside_poly
+            height, width = mask.shape
+            west, east = float(subset.lon.min()), float(subset.lon.max())
+            south, north = float(subset.lat.min()), float(subset.lat.max())
+            
+            # Calculate resolution for precise pixel-edge alignment
+            res_x = (east - west) / (width - 1) if width > 1 else 0.25
+            res_y = (north - south) / (height - 1) if height > 1 else 0.25
+            
+            # Define the affine transform (mapping pixel indices to lat/lon)
+            transform = from_bounds(
+                west - (res_x/2), south - (res_y/2), 
+                east + (res_x/2), north + (res_y/2), 
+                width, height
+            )
+            
+            # Convert the binary mask (pixels < threshold) into vector polygons
+            shapes = features.shapes(mask, mask=(mask == 1), transform=transform)
+            threshold_union = unary_union([shape(s) for s, v in shapes])
+            
+            # Intersect the elevation-based polygons with the original input polygons
+            original_union = unary_union(polygons)
+            adjusted_union = original_union.intersection(threshold_union)
+            
+            # Clean up the intersection result (discard lines/points, keep only polygons)
+            if adjusted_union.is_empty:
+                adjusted_polygons = []
+            elif hasattr(adjusted_union, 'geoms'):
+                adjusted_polygons = [g for g in adjusted_union.geoms if isinstance(g, (Polygon, MultiPolygon))]
+            else:
+                adjusted_polygons = [adjusted_union]
+        else:
+            # If no threshold is provided, return the original regions
+            adjusted_polygons = polygons
 
-            transform = rasterio.transform.from_bounds(
-                lon.min(), lat.min(),   
-                lon.max(), lat.max(),   
-                len(lon), len(lat)
-            )   
-            from shapely.geometry import shape
-
-            for geom, val in rasterio.features.shapes(
-                    final_mask.astype(np.uint8),
-                    mask=final_mask,
-                    transform=transform):
-                
-                if val == 1:
-                    new_poly = shape(geom)
-                    clipped_poly = new_poly.intersection(poly)
-
-                    if not clipped_poly.is_empty:
-                        if clipped_poly.geom_type == "Polygon":
-                            adjusted_polygons.append(clipped_poly)
-                        elif clipped_poly.geom_type == "MultiPolygon":
-                            adjusted_polygons.extend(list(clipped_poly.geoms))
-
-        lons, lats = zip(*all_coords)
-        min_lon = min(lons)
-        max_lon = max(lons)
-        min_lat = min(lats)
-        max_lat = max(lats)
-
-        fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': projection})
-
-        title_text = f"Selected regions under {threshold} m" if threshold is not None else "Original regions (No elevation threshold)"
-        ax.set_title(title_text)
-        ax.add_feature(cfeature.BORDERS, linestyle=':')
-        ax.add_feature(cfeature.COASTLINE)
-        ax.add_feature(cfeature.LAND, edgecolor='black')
+        # --- 3. Visualization ---
+        projection = ccrs.PlateCarree()
+        fig, ax = plt.subplots(figsize=(12, 7), subplot_kw={'projection': projection})
+        
+        # Buffer the display extent by 3 degrees for context
         ax.set_extent([min_lon - 3, max_lon + 3, min_lat - 3, max_lat + 3], crs=projection)
-        ax.gridlines(draw_labels=True)
 
-        cax = inset_axes(
-            ax,
-            width="3%", height="100%",
-            loc='center left',
-            bbox_to_anchor=(1.1, 0., 1, 1),
-            bbox_transform=ax.transAxes,
-            borderpad=0
-        )
+        # Add standard Cartopy geographical features
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
+        ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
+        ax.add_feature(cfeature.LAND, facecolor='#f9f9f9', edgecolor='black', zorder=0)
+        ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
 
-        elev_plot = elevation.plot(
-            ax=ax,
-            transform=projection,
-            cmap="terrain",
-            cbar_ax=cax,
-            cbar_kwargs={"label": "Elevation (m)"},
-            add_colorbar=True,
-            add_labels=False,
-            vmin=0, 
-            vmax=local_max  
-        )
+        # Create a dedicated axis for the colorbar to avoid squeezing the map
+        cax = inset_axes(ax, width="3%", height="100%", loc='center left',
+                        bbox_to_anchor=(1.08, 0., 1, 1), bbox_transform=ax.transAxes)
+        
+        # Plot the raw elevation data as the background
+        elev_ds['data'].plot(
+                ax=ax,
+                transform=projection,
+                cmap="terrain",
+                cbar_ax=cax,
+                cbar_kwargs={"label": "Elevation (m)"},
+                add_colorbar=True,
+                add_labels=False,
+                vmin=0, 
+                vmax=local_max  
+            )
 
-        for poly in polygons:
-            x, y = poly.exterior.xy
-            ax.plot(x, y, color='red', linewidth=2, transform=projection)
+        # PLOTTING GEOMETRIES
+        
+        # 1. Original input regions in Red
+        ax.add_geometries(polygons, crs=projection, facecolor='none', 
+                        edgecolor='red', linewidth=2, zorder=5)
 
-        for geom in adjusted_polygons:
-            Plot.plot_geometry(geom, ax)
+        # 2. Threshold-adjusted regions in Green
+        if adjusted_polygons:
+            ax.add_geometries(adjusted_polygons, crs=projection, facecolor='none', 
+                            edgecolor='green', linewidth=2, zorder=6)
 
+        ax.set_title(f"Elevation Mask: < {threshold}m", fontsize=15)
+
+        # --- 4. Final Processing ---
         if add_logos:
             fig, img_ax = Plot.add_image_below(fig=fig, image_path=LOGO_HORIZON_PATH, pad_frac=-.1)
             return fig, ax, img_ax, adjusted_polygons
-        else:
-            img_ax = None
-            return fig, ax, img_ax, adjusted_polygons
+        
+        return fig, ax, None, adjusted_polygons
 
 
     @staticmethod
@@ -1785,21 +1758,8 @@ class Plot:
 
         fig, ax = Plot.plot_poly(polygons, coords, layer=kg_da_masked, cmap=kg_cmap, norm=kg_norm, layer_type="koppen")
         if extra_polygons is not None and len(extra_polygons) > 0:
-            for poly in extra_polygons:
-                x, y = poly.exterior.xy
-                ax.fill(
-                    x, y,
-                    color="green", alpha=0.1,
-                    transform=projection,
-                    zorder=1  # lower -> below main polygons
-                )
-                ax.plot(
-                    x, y,
-                    color="green", linewidth=2,
-                    transform=projection,
-                    label="Original region",
-                    zorder=1
-                )
+            ax.add_geometries(extra_polygons, crs=projection, facecolor='none', 
+                            edgecolor='green', linewidth=2, zorder=5)
         handles = [
             mpatches.Rectangle((0, 0), 1, 1, facecolor="white", linewidth=2, edgecolor="green", label="Original region"),
             mpatches.Rectangle((0, 0), 1, 1, facecolor="white", linewidth=2, edgecolor="red", label="Filtered region")
