@@ -1586,16 +1586,58 @@ class Plot:
             return fig, axes, None
     
     @staticmethod
-    def plot_cordex_map(gdf, domains_dict, bbox, study_region, mapproj, selected_domain=None, add_logos=True):
+    def plot_cordex_map(gdf, domains_dict, bbox, study_region, mapproj, selected_domain=None, buffer=None, add_logos=True):
         """
-        Plots CORDEX domains, highlighting the selected domain,
-        the bounding box, and the study region.
+        Plots CORDEX domains on a global or regional map with highlighting for a study area.
+
+        This function visualizes multiple CORDEX domains from a GeoDataFrame, emphasizes a 
+        recommended/selected domain, and overlays both a user-defined bounding box and 
+        a specific study region geometry. It automatically handles dynamic zooming and 
+        clipping to geographic boundaries (-180 to 180 longitude).
+
+        Parameters
+        ----------
+        gdf : geopandas.GeoDataFrame
+            A GeoDataFrame containing the geometries of CORDEX domains. 
+            Indices should match the keys in `domains_dict`.
+        domains_dict : dict
+            Configuration dictionary for domains. Expected structure:
+            { 'DOMAIN_ID': {'long_name': str, 'projection': cartopy.crs, 'colour': str}, ... }
+        bbox : list or tuple
+            The bounding box of interest in [min_lon, min_lat, max_lon, max_lat] format.
+        study_region : geopandas.GeoDataFrame or shapely.geometry
+            The specific spatial geometry representing the actual study area.
+        mapproj : cartopy.crs.Projection
+            The target projection for the map axes (e.g., ccrs.PlateCarree() or ccrs.Robinson()).
+        selected_domain : str, optional
+            The ID of the domain to be highlighted as "Recommended". If provided, the 
+            map will zoom to this domain's extent. Defaults to None.
+        buffer : float, optional
+            The padding (in degrees) to add around the zoomed extent. If None, 
+            defaults to 30 degrees.
+        add_logos : bool, optional
+            If True, appends project logos below the figure using the `Plot.add_image_below` 
+            utility. Defaults to True.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The generated figure object.
+        ax : cartopy.mpl.geoaxes.GeoAxes
+            The primary map axes containing the plotted domains and regions.
+        img_ax : matplotlib.axes.Axes or None
+            The axes object containing the logos if `add_logos` is True; otherwise None.
+
+        Notes
+        -----
+        - The function uses `ax.stock_img()` for a realistic topographic background.
+        - Lon/Lat bounds are clipped to [-180, 180] and [-90, 90] respectively to prevent 
+        Cartopy projection errors when the buffer exceeds global limits.
         """
         # Setup the figure
-        fig, ax = plt.subplots(figsize=(16, 9), dpi=100, 
-                            subplot_kw={"projection": mapproj})
+        fig, ax = plt.subplots(figsize=(16, 9), dpi=100,
+                                subplot_kw={"projection": mapproj})
 
-        ax.set_global() 
         ax.coastlines(resolution='110m', color='black', linewidth=0.5)
         ax.stock_img()
 
@@ -1603,38 +1645,40 @@ class Plot:
 
         # Plot ALL domains
         for r in domains_dict.keys():
-            dom_row = gdf.loc[[r]]
-            
+
             # Style logic
             is_selected = (r == selected_domain)
-            line_width = 4 if is_selected else 1.2
-            alpha_val = 1.0 if is_selected else 0.3
+            line_width = 4 if is_selected else 1.5
+            alpha_val = 1.0 if is_selected else 0.4
             z_order = 5 if is_selected else 3
-            
-            native_projection = domains_dict[r]["projection"]
+
+            native_crs = domains_dict[r]["projection"]
             color = domains_dict[r]["colour"]
+
+            v = domains_dict[r]['vertices']
+            lons = np.array([v['TLC'][0], v['TRC'][0], v['BRC'][0], v['BLC'][0]])
+            lats = np.array([v['TLC'][1], v['TRC'][1], v['BRC'][1], v['BLC'][1]])
             
-            # Plot the boundary
-            boundary = dom_row.to_crs(native_projection).boundary
-            
-            # Base plot for all domains
-            boundary.plot(ax=ax, 
-                        transform=native_projection, 
-                        color=color, 
-                        linewidth=2 if not is_selected else line_width, 
-                        alpha=0.5 if not is_selected else alpha_val,
-                        zorder=z_order)
+            # Get the corners in the rotated system
+            rot_coords = native_crs.transform_points(ccrs.PlateCarree(), lons, lats)
+            x_min, x_max = rot_coords[:, 0].min(), rot_coords[:, 0].max()
+            y_min, y_max = rot_coords[:, 1].min(), rot_coords[:, 1].max()
+
+            # Plot a rectangle in the ROTATED system
+            ax.add_patch(mpatches.Rectangle(
+                (x_min, y_min), x_max - x_min, y_max - y_min,
+                fill=False, edgecolor=color, linewidth=line_width,
+                alpha=alpha_val, transform=native_crs, zorder=z_order
+            ))
 
             # Update legend
             label_text = f"{r}: {domains_dict[r]['long_name']}"
-            if is_selected:
-                label_text += " (Recommended)"
-            
+            if is_selected: label_text += " (Recommended)"
             legend_handles.append(mpatches.Patch(color=color, alpha=alpha_val, label=label_text))
 
         # Plot the Bounding Box (bbox) with the marker 'o'
-        ax.plot([bbox[0], bbox[2], bbox[2], bbox[0], bbox[0]], 
-                [bbox[1], bbox[1], bbox[3], bbox[3], bbox[1]], 
+        ax.plot([bbox[0], bbox[2], bbox[2], bbox[0], bbox[0]],
+                [bbox[1], bbox[1], bbox[3], bbox[3], bbox[1]],
                 color="darkred", lw=2, alpha=1, marker='o', transform=mapproj, zorder=10)
 
         # Plot the Study Region
@@ -1646,21 +1690,27 @@ class Plot:
 
         # Dynamic Zoom Logic
         if selected_domain:
-            bounds = gdf.loc[selected_domain, 'geometry'].bounds
-            pad = 10
-            ax.set_extent([bounds[0]-pad, bounds[2]+pad, bounds[1]-pad, bounds[3]+pad], crs=mapproj)
+            geom = gdf.loc[[selected_domain], 'geometry'].to_crs('EPSG:4326')
+            lon_min, lat_min, lon_max, lat_max = geom.total_bounds  # (minx, miny, maxx, maxy)
+            buffer = buffer if buffer is not None else 30
+
+            ext_lon_min = max(lon_min - buffer, -180)
+            ext_lon_max = min(lon_max + buffer, 180)
+            ext_lat_min = max(lat_min - buffer, -90)
+            ext_lat_max = min(lat_max + buffer, 90)
+
+            ax.set_extent([ext_lon_min, ext_lon_max, ext_lat_min, ext_lat_max], crs=ccrs.PlateCarree())
         else:
-            buffer = 30 
-            ax.set_extent([bbox[0]-buffer, bbox[2]+buffer, bbox[1]-buffer, bbox[3]+buffer], crs=mapproj)
+            buffer = buffer if buffer is not None else 30
+            ax.set_extent([bbox[0] - buffer, bbox[2] + buffer, bbox[1] - buffer, bbox[3] + buffer], crs=ccrs.PlateCarree())
 
         # Final Formatting
         gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.2)
         gl.top_labels = False
         gl.right_labels = False
 
-        
-        leg = plt.legend(handles=legend_handles, loc='upper left', bbox_to_anchor=(1.02, 1), 
-                        title="CORDEX Domains", fontsize='small')
+        leg = plt.legend(handles=legend_handles, loc='upper left', bbox_to_anchor=(1.02, 1),
+                            title="CORDEX Domains", fontsize='small')
         for text in leg.get_texts():
             if "(Recommended)" in text.get_text():
                 text.set_weight("bold")
@@ -2063,15 +2113,44 @@ class Plot:
         time_col: str = "year",
         model_value_col: str = "value", # The column name in model_dfs (often standardized to 'value')
         legend_title: str = None,
-        figsize: tuple = None,
-        dpi: int = 100,
         add_logos: bool = True,
         subtitle: bool = True,
         yaxis_label: str = None,
     ):
         '''
-        Plots a grid comparing rolling window statistics of models vs observations with Confidence Intervals.
-        Reuses create_grid and adds logos.
+        """
+        Plots a multi-panel grid comparing rolling window statistics of models against observations.
+
+        Each panel displays a single model's time series (solid blue) compared to the 
+        observational reference (dashed black). Both series include shaded areas representing 
+        95% Confidence Intervals if the corresponding 'ci_lower' and 'ci_upper' columns are 
+        present in the dataframes. A single global legend is placed at the top to maintain 
+        visual clarity across the grid.
+
+        Args:
+            model_dfs (dict): A dictionary where keys are model names (str) and values 
+                are pd.DataFrames containing the model data.
+            obs_df (pd.DataFrame): Dataframe containing the observational/reference data.
+            value_col (str): The primary value column name in `obs_df`.
+            time_col (str, optional): The column name representing the x-axis (e.g., 'year'). 
+                Defaults to "year".
+            model_value_col (str, optional): The column name representing the primary 
+                value in the `model_dfs` DataFrames. Defaults to "value".
+            legend_title (str, optional): The main title (suptitle) of the figure. 
+                Defaults to None.
+            add_logos (bool, optional): Whether to append project logos below the plots. 
+                Defaults to True.
+            subtitle (bool, optional): Whether to display the `legend_title` as a 
+                formatted suptitle. Defaults to True.
+            yaxis_label (str, optional): The label for the y-axis, applied only to the 
+                leftmost panels. Defaults to None.
+
+        Returns:
+            tuple: A tuple containing:
+                - fig (matplotlib.figure.Figure): The generated figure object.
+                - axs_flat (np.ndarray): Flattened array of axes objects for each panel.
+                - img_ax (matplotlib.axes.Axes or None): The axes containing logos, 
+                  if `add_logos` is True.
         '''
 
         n_models = len(model_dfs)
@@ -2107,7 +2186,8 @@ class Plot:
                     obs_df[obs_lower],
                     obs_df[obs_upper],
                     color='gray',
-                    alpha=0.2
+                    alpha=0.2,
+                    label='Obs. Uncertainty (95% CI)'
                 )
 
 
@@ -2117,7 +2197,7 @@ class Plot:
                 color='darkblue', 
                 linewidth=1.5, 
                 linestyle='-', 
-                label='Cordex Model'
+                label='Model'
             )
 
             # Plot CI (Model)
@@ -2130,7 +2210,8 @@ class Plot:
                     model_df[mod_lower],
                     model_df[mod_upper],
                     color='lightblue',
-                    alpha=0.3
+                    alpha=0.3,
+                    label=f'Model Uncertainty (95% CI)'
                 )
 
             # Formatting
@@ -2139,11 +2220,10 @@ class Plot:
             if i % ncols == 0 and yaxis_label:
                 ax.set_ylabel(yaxis_label)
 
-            
-            ax.set_xlabel(time_col.capitalize())
+            ax.tick_params(labelbottom=True)
+            ax.set_xlabel("")
 
             ax.grid(True, alpha=0.3)
-            ax.legend(loc='best', fontsize='small')
 
         # Hide Unused Panels
         for j in range(i + 1, len(axs_flat)):
@@ -2159,7 +2239,20 @@ class Plot:
                 y=1.02
             )
 
-        fig.tight_layout()
+        handles, labels = ax.get_legend_handles_labels()
+        
+        fig.legend(
+            handles=handles, 
+            labels=labels, 
+            loc='upper center', 
+            bbox_to_anchor=(0.5, 0.99), # Centered horizontally, high vertically
+            ncol=4,                     # 4 items in one row
+            fontsize=14,
+            frameon=False
+        )
+
+        # rect=[left, bottom, right, top]
+        fig.tight_layout(rect=[0, 0, 1, 0.99])
 
         # Logos and Return
         if add_logos:

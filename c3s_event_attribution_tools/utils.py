@@ -15,7 +15,8 @@ from .plot import *
 import os
 import warnings
 import calendar
-
+from shapely.ops import transform
+import geopandas as gpd
 from typing import Dict, Union
 import xarray as xr
 import ipywidgets as widgets
@@ -758,19 +759,63 @@ class Utils:
         return pd.Timestamp(dt).to_pydatetime()
     
     @staticmethod
-    def find_covering_domain(gdf, study_region, bbox_coords):
-        """Identifies which domain fully contains the study area."""
-        bbox_poly = box(*bbox_coords)
-        study_geom = study_region.geometry.union_all()
+    def find_covering_domain(domains_data, study_region, bbox_coords):
+        """
+        Identifies which domain fully contains the study area using Native Rotated Projections.
+        This solves curvature and anti-meridian wrapping by projecting the study area 
+        into each CORDEX domain's mathematically flat native CRS.
+        """
+        # 1. Standardize your inputs to WGS84 (Geographic)
+        study_region_wgs84 = study_region.to_crs("EPSG:4326")
+        study_geom_wgs84 = study_region_wgs84.geometry.union_all()
+        bbox_geom_wgs84 = box(*bbox_coords)
         
         covering = []
-        for index, row in gdf.iterrows():
-            if row['geometry'].contains(bbox_poly) and row['geometry'].contains(study_geom):
-                covering.append(index)
+
+        for dom_id, config in domains_data.items():
+            domain_crs = config['projection']
+            
+            # --- A. Define the exact CORDEX domain in its native Rotated Space ---
+            v = config['vertices']
+            lons = np.array([v['TLC'][0], v['TRC'][0], v['BRC'][0], v['BLC'][0]])
+            lats = np.array([v['TLC'][1], v['TRC'][1], v['BRC'][1], v['BLC'][1]])
+            
+            # Transform geographic corners to the rotated pole coordinates
+            try:
+                rot_coords = domain_crs.transform_points(ccrs.PlateCarree(), lons, lats)
+            except Exception:
+                continue  # Skip if transformation fails for some mathematical reason
+                
+            # In its native rotated CRS, the CORDEX domain is exactly this bounding box
+            min_x, max_x = rot_coords[:, 0].min(), rot_coords[:, 0].max()
+            min_y, max_y = rot_coords[:, 1].min(), rot_coords[:, 1].max()
+            domain_geom_rot = box(min_x, min_y, max_x, max_y)
+            
+            # --- B. Project Study Area & BBox into the same Rotated Space ---
+            # Get the PROJ4 string to use with GeoPandas
+            proj4_str = domain_crs.proj4_init
+            test_geoms = gpd.GeoSeries([study_geom_wgs84, bbox_geom_wgs84], crs="EPSG:4326")
+            
+            try:
+                test_geoms_rot = test_geoms.to_crs(proj4_str)
+            except Exception:
+                continue
+                
+            study_geom_rot = test_geoms_rot.iloc[0]
+            bbox_geom_rot = test_geoms_rot.iloc[1]
+            
+            # --- C. Mathematical Containment Check ---
+            # Buffer by 0.1 rotated degrees (~10km) to absorb edge floating-point errors
+            safe_domain = domain_geom_rot.buffer(0.1)
+            
+            if safe_domain.covers(bbox_geom_rot) and safe_domain.covers(study_geom_rot):
+                # Track valid domains and their rotated area
+                covering.append((dom_id, domain_geom_rot.area))
                 
         if covering:
-            # Return the one with the smallest area (tightest fit)
-            return min(covering, key=lambda d: gdf.loc[d, 'geometry'].area)
+            # Return the domain ID (index 0) with the tightest fit (smallest area)
+            return min(covering, key=lambda d: d[1])[0]
+            
         return None
     
     @staticmethod
