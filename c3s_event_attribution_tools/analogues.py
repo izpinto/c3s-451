@@ -1435,7 +1435,7 @@ class Analogues:
         c1 = ax[1].contourf(lons, lats, slp_correlation, levels=con_lev, cmap='RdBu_r', transform=ccrs.PlateCarree())
         ax[1].add_feature(cfeature.COASTLINE)
         ax[1].coastlines(linewidth=0.4)
-        ax[1].set_title('Corr MSL')
+        ax[1].set_title('Corr SLP')
         ax[1].gridlines(draw_labels=draw_labels)
         Analogues.plot_region(ax[1], region)
         Analogues.plot_region(ax[1], slp_domain)
