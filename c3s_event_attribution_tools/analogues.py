@@ -16,6 +16,7 @@ import datetime
 import warnings
 from shapely.geometry import Polygon, MultiPolygon
 import matplotlib
+import pandas as pd
 
 from .utils import Utils
 
@@ -261,10 +262,41 @@ class Analogues:
             Utils.print("Error reading cubes for %s", var)
             raise FileNotFoundError
         iris.coord_categorisation.add_year(cube, 'time')
-        cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell < Y2))
+        cube = cube.extract(iris.Constraint(year=lambda cell: Y1 <= cell <= Y2))
         iris.coord_categorisation.add_month(cube, 'time')
         cube = cube.extract(iris.Constraint(month=months))
         return cube
+
+    @staticmethod
+    def top_separate_analogues_df(df, N, sep=5):
+        '''
+        Input data is a dataframe of dates and distance
+        '''
+        # ensure datetime
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"])
+        # remove NaN and zero distances
+        df = df.dropna(subset=["distance"]) 
+        df = df[df["distance"] != 0]
+        # sort by ascending distance (best analogues first)
+        df = df.sort_values("distance")  
+        selected_dates = []
+        for d in df["date"]:
+            if not selected_dates:
+                selected_dates.append(d)
+                continue
+            # check separation condition
+            if all(abs((d - s).days) >= sep for s in selected_dates):
+                selected_dates.append(d)
+    
+        # filter original dataframe
+        result = df[df["date"].isin(selected_dates)]
+    
+        result_top = result.nsmallest(N, "distance")
+        # sort back by date (optional, nicer output)
+        result_top = result_top.sort_values("date")
+    
+        return result_top
 
     @staticmethod
     def anomaly_period_outputs(Y1:int, Y2:int, ana_var:str, N:int,
@@ -302,9 +334,8 @@ class Analogues:
         E = Analogues.extract_region(event, region) # Extract domain for event field
         E = E - E.collapsed(['latitude', 'longitude'], iris.analysis.MEAN) # remove spatial mean for event field
         ###
-        P1_dates = Analogues.analogue_dates_v2(E, P1_field, region, N*5)[:N] # calculate the closest analogues
-        if str(date[0])+str("{:02d}".format(list(calendar.month_abbr).index(date[1])))+str(date[2]) in P1_dates: # Remove the date being searched for
-            P1_dates.remove(str(date[0])+str("{:02d}".format(list(calendar.month_abbr).index(date[1])))+str(date[2]))
+        P1_dates = Analogues.analogue_dates_v2(E, P1_field,N) # calculate the closest analogues
+        
         return P1_dates
 
     @staticmethod
@@ -453,29 +484,21 @@ class Analogues:
         Returns:
             date_list2 (list[str]):
                 List of analogue dates in YYYYMMDD string format, filtered to ensure
-                a minimum separation in time between events.
+                a minimum separation in time between events and minimum euclidian distance.
         '''
-        
-        def cube_date_to_string(cube_date:tuple) -> tuple:
-            year,month,day,time = cube_date
-            return str(year)+str(month).zfill(2)+str(day).zfill(2), time
         
         var_e = Analogues.extract_region(event, region)
         reanalysis_cube = Analogues.extract_region(reanalysis_cube, region)
         var_d = Analogues.euclidean_distance(reanalysis_cube, var_e)
-        date_list = []
-        final_date_list = []
-        
-        for i in np.arange(N):
-            #Utils.print(i)
-            var_i = np.sort(var_d)[i]
-            for n, each in enumerate(var_d):
-                if var_i == each:
-                    a1 = n
-            date, time = cube_date_to_string(Analogues.cube_date(reanalysis_cube[a1,...]))
-            date_list.append(date)
-            final_date_list = Analogues.date_list_checks(date_list, days_apart=5)
-            
+       
+        time_coord = reanalysis_cube.coord("time")
+        dates = time_coord.units.num2date(time_coord.points)
+        time_str = [f"{d.year:04d}-{d.month:02d}-{d.day:02d}" for d in dates]
+
+        ec_df=pd.DataFrame({'date':time_str,'distance':var_d})
+        top_N_analogues=Analogues.top_separate_analogues_df(ec_df,N)
+        final_date_list = top_N_analogues["date"].dt.strftime("%Y%m%d").tolist()
+
         return final_date_list
 
     @staticmethod
