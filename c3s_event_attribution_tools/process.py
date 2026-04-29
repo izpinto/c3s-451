@@ -131,7 +131,7 @@ class Process:
 
         def apply_roll(group):
             roller = group.set_index(datetime_col)[value_col].rolling(
-                window=padding, min_periods=1, center=centering
+                window=padding, min_periods=padding, center=centering
             )
             if method == "sum":
                 rolled = roller.sum()
@@ -155,7 +155,7 @@ class Process:
         else:
             # single global time series
             roller = gdf.set_index(datetime_col)[value_col].rolling(
-                window=padding, min_periods=1, center=centering
+                window=padding, min_periods=padding, center=centering
             )
             if method == "sum":
                 rolled = roller.sum()
@@ -529,6 +529,11 @@ class Process:
             shift_mask = rolled_gdf[new_datetime_col].dt.month < month_range[0]
             rolled_gdf["year"] = rolled_gdf[new_datetime_col].dt.year
             rolled_gdf.loc[shift_mask, "year"] -= 1
+
+            # Fix to remove the first year when is cross year
+            min_sy = rolled_gdf["year"].min()
+            max_sy = rolled_gdf["year"].max()
+            rolled_gdf = rolled_gdf[(rolled_gdf["year"] > min_sy) & (rolled_gdf["year"] <= max_sy)]
             # Cross-year range
             match yearly_value:
                 case 'min':
@@ -738,7 +743,7 @@ class Process:
             da = da.sel(time=~((da.time.dt.month == 2) & (da.time.dt.day == 29)))
             # Rolling window on the daily series
             if padding is not None and padding > 1:
-                roller = da.rolling(time=padding, center=True, min_periods=1)
+                roller = da.rolling(time=padding, center=True, min_periods=padding)
                 if method == "mean":
                     da_rolled = roller.mean()
                 elif method == "sum":
@@ -769,6 +774,13 @@ class Process:
                         filtered_years - 1, 
                         filtered_years
                     )
+                    # Drop incomplete edge season years
+                    min_sy = int(seasonal_year.min().values)
+                    max_sy = int(seasonal_year.max().values)
+                    complete_mask = (seasonal_year > min_sy) & (seasonal_year < max_sy)
+                    da_filtered = da_filtered.where(complete_mask, drop=True)
+                    seasonal_year = seasonal_year.where(complete_mask, drop=True)
+
                     da_filtered.coords["season_year"] = seasonal_year
                     group_key = "season_year"
             else:
